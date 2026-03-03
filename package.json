@@ -1,0 +1,38 @@
+{
+  "name": "crudproject",
+  "version": "1.0.0",
+  "description": "",
+  "license": "ISC",
+  "author": "",
+  "type": "commonjs",
+  "main": "src/App.js",
+  "scripts": {
+    "start": "node src/App.js",
+    "dev": "nodemon App.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "body-parser": "^2.2.2",
+    "cors": "^2.8.6",
+    "coupon-code": "^0.4.5",
+    "crypto": "^1.0.1",
+    "ejs": "^4.0.1",
+    "express": "^5.2.1",
+    "ioredis": "^5.9.2",
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^9.1.6",
+    "multer": "^2.0.2",
+    "node-cron": "^4.2.1",
+    "node-schedule": "^2.1.1",
+    "nodemailer": "^8.0.0",
+    "nodemon": "^3.1.11",
+    "otp-generator": "^4.0.1",
+    "razorpay": "^2.9.6",
+    "redis": "^5.10.0",
+    "socket.io": "^4.8.3",
+    "stripe": "^20.3.1",
+    "twilio": "^5.12.1",
+    "validatorjs": "^3.22.1",
+    "voucher-code-generator": "^1.3.0"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "DB_URL": "mongodb://127.0.0.1:27017/user",
+  "ACCESS_SECRET": "access_secret_123",
+  "REFRESH_SECRET": "refresh_secret_456",
+   "SMTP_HOST": "smtp.gmail.com",
+  "SMTP_PORT": 587,
+  "SMTP_USER": "divya.elaunch@gmail.com",
+  "SMTP_PASS": "zxwedltrysfecqcq",
+   "STRIPE_SECRET_KEY": "sk_test_51SzGQG1lo7Nq3ghvcNkCwoJWRlOh8yNmAsyWN8Jir1HR3PlH6bogeBOgtDHwHIF8udZiMX8c8dEAhAdQnJ10dYWE00kwB7zhFR",
+  "STRIPE_PUBLISHABLE_KEY": "pk_test_51SzGQG1lo7Nq3ghv7JDAf30SqlJ7sG80j6DiWV1LDR1Pkt1hQvdVB9L05nuu8qWNtzi2OzxBpYsLTIIxvBB7KJUJ004GG57avG",
+   "STRIPE_WEBHOOK_SECRET": "whsec_xgbTQ9mPQpsB8QgK9HM4L9TTf4SY7kvu",
+   "TWILIO_SID": "AC30ca1786c94c56a5e0e97c2704f20e94",
+   "TWILIO_AUTH_TOKEN": "8a03cb5918f595e679dfa944830c7d99",
+  "TWILIO_PHONE_NUMBER": "+15674052007"
+}
+
+
