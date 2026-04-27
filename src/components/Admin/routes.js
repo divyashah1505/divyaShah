@@ -27,6 +27,13 @@ const routes = [
     isPublic: true,
   },
   {
+    path: "/health",
+    method: "get",
+    controller: adminController.healthCheck,
+    isPublic: true,
+    
+  },
+  {
     path: "/verify-2fa",
     method: "post",
     controller: adminController.verifyAdmin2FA,
