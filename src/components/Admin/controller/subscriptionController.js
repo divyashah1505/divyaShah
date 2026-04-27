@@ -143,7 +143,26 @@ try {
        return success(res, null, appString.SUBSCRIPTIONPLANREACTIVATED, 200);
     }catch(err){
          return error(res, err.message, 400);
-    }}
+    }},
+     getAllMembershipPlans: async (req, res) => {
+    try {
+      const plans = await SubscriptionPlan.find().sort({ createdAt: -1 });
+      return success(res, plans, "Plans fetched successfully", 200);
+    } catch (err) {
+      return error(res, err.message, 400);
+    }
+  },
+
+  getMembershipPlanById: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const plan = await SubscriptionPlan.findById(id);
+      if (!plan) return error(res, appString.PLANNOTFOUND, 404);
+      return success(res, plan, "Plan details fetched successfully", 200);
+    } catch (err) {
+      return error(res, err.message, 400);
+    }
+  },
     
 };
 module.exports = membershipController;

@@ -285,39 +285,39 @@ return { membershipDiscount, deliveryCharge };
 };
 
 schedule.scheduleJob("*/10 * * * *", async () => {
-  try {
-    console.log("Withdraw Cron Running evry 10 minutes.");
-    
-    const pendingRequests = await WithdrawRequest.find({ status: 0 })
-      .sort({ priority: -1, createdAt: 1 });
+    try {
+        console.log("Withdraw Cron Running...");
+        
+        const pendingRequests = await WithdrawRequest.find({ status: 0 })
+            .sort({ priority: -1, createdAt: 1 })
+            .limit(50); 
 
-    for (let request of pendingRequests) {
-      const approvedRequest = await WithdrawRequest.findOneAndUpdate(
-        { _id: request._id, status: 0 },
-        { status: 1 },
-        { new: true }
-      );
+        for (let request of pendingRequests) {
+            const approvedRequest = await WithdrawRequest.findOneAndUpdate(
+                { _id: request._id, status: 0 },
+                { status: 1 },
+                { new: true }
+            );
 
-      if (approvedRequest) {
-       
-        await Wallet.findOneAndUpdate(
-          { userId: approvedRequest.userId },
-          { 
-            $set: { membership_id: approvedRequest.membership_id },
-            $inc: { 
-              totalReward_Points: approvedRequest.pointRequestForWithdraw,
-              totalWithdraw_amount: approvedRequest.rewardableAmount 
+            if (approvedRequest) {
+                await Wallet.findOneAndUpdate(
+                    { userId: approvedRequest.userId },
+                    { 
+                        $set: { membership_id: approvedRequest.membership_id },
+                        $inc: { 
+                            totalReward_Points: approvedRequest.pointRequestForWithdraw, 
+                            totalWithdraw_amount: approvedRequest.rewardableAmount 
+                        }
+                    },
+                    { upsert: true }
+                );
+                
+                console.log(`Approved & Wallet Updated : ${approvedRequest._id}`);
             }
-          },
-          { upsert: true, new: true }
-        );
-
-        console.log(`Approved & Wallet Updated: ${approvedRequest._id}`);
-      }
+        }
+    } catch (error) {
+        console.error("Cron Error:", error);
     }
-  } catch (error) {
-    console.error("Cron Error:", error);
-  }
 });
 
 const pointRatio = 10;

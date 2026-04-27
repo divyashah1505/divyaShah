@@ -3,9 +3,9 @@ const router = express.Router();
 
 const adminController = require("./controller/adminController");
 const categoryController = require("./controller/categoryController ");
-const productController = require("./controller/productController"); 
+const productController = require("./controller/productController");
 const orderListController = require('../Admin/controller/orderListController');
-const promoCodeController = require("./controller/promocodeController"); 
+const promoCodeController = require("./controller/promocodeController");
 const { registerValidation } = require("./validation");
 const { loginValidation } = require("../user/validation");
 const { routeArray } = require("../../middleware");
@@ -25,6 +25,22 @@ const routes = [
     controller: adminController.login,
     validation: loginValidation,
     isPublic: true,
+  },
+  {
+    path: "/verify-2fa",
+    method: "post",
+    controller: adminController.verifyAdmin2FA,
+    isPublic: true,
+  },
+  {
+    path: "/2fa/setup",
+    method: "post",
+    controller: adminController.setup2FA,
+  },
+  {
+    path: "/2fa/enable",
+    method: "post",
+    controller: adminController.enable2FA,
   },
   {
     path: "/user-list",
@@ -76,12 +92,12 @@ const routes = [
   {
     path: "/product",
     method: "post",
-    controller: productController.addProduct, 
+    controller: productController.addProduct,
   },
   {
     path: "/product-list",
     method: "get",
-    controller: productController.listProducts, 
+    controller: productController.listProducts,
   },
   {
     path: "/product/:id",
@@ -93,19 +109,19 @@ const routes = [
     method: "delete",
     controller: productController.deleteProduct,
   },
-   {
+  {
     path: "/product/reactivate/:id",
     method: "put",
-    controller: productController.reactivateProduct, 
+    controller: productController.reactivateProduct,
   },
   {
     path: "/order-list",
     method: "get",
-    controller: orderListController.getOrders, 
+    controller: orderListController.getOrders,
   },
   {
-    path:"/update-payment",
-    method:"put",
+    path: "/update-payment",
+    method: "put",
     controller: adminSettingController.updatePaymentMethod,
   },
 
@@ -129,36 +145,51 @@ const routes = [
     method: "delete",
     controller: promoCodeController.deletePromoCode,
   },
-{
-  path:"/enable/:id",
-  method:"patch",
-  controller:promoCodeController.enablePromoCode
-},
-{
-  path:"/addPlan",
-  method:"post",
-  controller:membershipController.addMembershipPlan
-},
-{
-  path:"/updatesub/:id",
-  method:"put",
-  controller:membershipController.updateMembershipPlan
-},
-{
-   path:"/disablesub/:id",
-  method:"delete",
-  controller:membershipController.disableSubscriptionPlan
-},
-{
-   path:"/enablesub/:id",
-  method:"post",
-  controller:membershipController.reactivateSubscriptionplan
-},
- {
-        path:"/membership-status",
-        method:"get",
-        controller:adminController.getMembershipStatus
-    }
+  {
+    path: "/enable/:id",
+    method: "patch",
+    controller: promoCodeController.enablePromoCode
+  },
+  {
+    path: "/view-subscription-plans",
+    method: "get",
+    controller: membershipController.getAllMembershipPlans
+  },
+  {
+    path: "/view-subscription-plans/:id",
+    method: "get",
+    controller: membershipController.getMembershipPlanById
+  },
+  {
+    path: "/addPlan",
+    method: "post",
+    controller: membershipController.addMembershipPlan
+  },
+  {
+    path: "/updatesub/:id",
+    method: "put",
+    controller: membershipController.updateMembershipPlan
+  },
+  {
+    path: "/disablesub/:id",
+    method: "delete",
+    controller: membershipController.disableSubscriptionPlan
+  },
+  {
+    path: "/enablesub/:id",
+    method: "post",
+    controller: membershipController.reactivateSubscriptionplan
+  },
+  {
+    path: "/membership-status",
+    method: "get",
+    controller: adminController.getMembershipStatus
+  },
+  {
+    method: "post",
+    path: "/upload-photos",
+    controller: adminController.uploadPhotos,
+  }
 ];
 
 module.exports = routeArray(routes, router, true);

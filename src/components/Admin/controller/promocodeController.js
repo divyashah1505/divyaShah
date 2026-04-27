@@ -115,20 +115,22 @@ updatePromoCode: async (req, res) => {
             );
         }
 
-        const updatedPromo = await PromoCode.findByIdAndUpdate(
-            id,
-            {
-                $set: {
-                    code: newCode,
-                    type: finalType,
-                    discountValue: discountValue || promo.discountValue,
-                    startDate: finalStart,
-                    endDate: finalEnd,
-                    isActive: isActive !== undefined ? isActive : promo.isActive
-                }
-            },
-            { new: true, runValidators: true }
-        );
+ // Inside updatePromoCode
+const updatedPromo = await PromoCode.findByIdAndUpdate(
+    id,
+    {
+        $set: {
+            code: newCode,
+            type: finalType,
+            discountValue: discountValue || promo.discountValue,
+            startDate: finalStart,
+            endDate: finalEnd,
+            // FIX: Changed isActive to status
+            status: isActive !== undefined ? isActive : promo.status 
+        }
+    },
+    { new: true, runValidators: true }
+);
 
         return success(res, updatedPromo, appString.PROMOCODEUPDATED);
     } catch (err) {

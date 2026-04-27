@@ -63,6 +63,7 @@ const userSchema = new mongoose.Schema(
       totalPoints:{
             type:Number
         },
+     
 
   },
   { timestamps: true }

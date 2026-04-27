@@ -3,65 +3,28 @@ const Category = require("../model/category");
 const { success, error } = require("../../utils/commonUtils");
 const { appString } = require("../../utils/appString");
 const category = require("../model/category");
-
+const { upload } = require("../../../middleware");
+const multer = require("multer");
 const productyController = {
-  addProduct: async (req, res) => {
-    try {
-      const { name, description, image, qty, price, categoryId } = req.body;
+   addProduct: async (req, res) => {
+    // Wrap the logic in the upload middleware to parse FormData
+    upload(req, res, async (err) => {
+      try {
+        if (err instanceof multer.MulterError) {
+          return error(res, `Multer Error: ${err.message}`, 400);
+        } else if (err) {
+          return error(res, err.message, 400);
+        }
 
-      const subCategory = await Category.findById(categoryId);
-      if (!subCategory) {
-        return error(res, appString.SUBCATEGORYNOTFOUND, 404);
-      }
+        // Now req.body will contain your fields
+        const { name, description, qty, price, categoryId } = req.body;
 
-      if (subCategory.status !== 1) {
-        return error(res, appString.SUBCATEGORY_INACTIVE, 400);
-      }
+        // Extract filename from Multer
+        let imageName = null;
+        if (req.files && req.files.length > 0) {
+          imageName = req.files[0].filename; 
+        }
 
-      const mainId = subCategory.categoryId;
-      if (!mainId) {
-        return error(res, appString.NOT_A_SUBCATEGORY, 400);
-      }
-
-      const mainCategory = await Category.findById(mainId);
-      if (!mainCategory) {
-        return error(res, appString.PARENTCATEGORY, 404);
-      }
-
-      if (mainCategory.status !== 1) {
-        return error(res, appString.CATEGORY_INACTIVE, 400);
-      }
-
-      const product = await Product.create({
-        name,
-        description,
-        image,
-        qty: qty || 0,
-        price: price || 0,
-        maincategoryId: mainId,
-        categoryId: categoryId,
-      });
-
-      return success(res, product, appString.PRODUCTCREATED, 201);
-    } catch (err) {
-      return error(res, err.message, 400);
-    }
-  },
-
-  updateProduct: async (req, res) => {
-    try {
-      const { id } = req.params;
-      const { name, description, image, qty, price, categoryId, status } =
-        req.body;
-
-      const product = await Product.findById(id);
-      if (!product) {
-        return error(res, appString.NOT_FOUND, 404);
-      }
-
-      let updateData = { name, description, image, qty, price, status };
-
-      if (categoryId) {
         const subCategory = await Category.findById(categoryId);
         if (!subCategory) {
           return error(res, appString.SUBCATEGORYNOTFOUND, 404);
@@ -81,20 +44,97 @@ const productyController = {
           return error(res, appString.CATEGORY_INACTIVE, 400);
         }
 
-        updateData.categoryId = categoryId;
-        updateData.maincategoryId = mainId;
+        const product = await Product.create({
+          name,
+          description,
+          image: imageName, // Use the filename from Multer
+          qty: Number(qty) || 0,
+          price: Number(price) || 0,
+          maincategoryId: mainId,
+          categoryId: categoryId,
+        });
+
+        return success(res, product, appString.PRODUCTCREATED, 201);
+      } catch (err) {
+        return error(res, err.message, 400);
       }
+    });
+  },
 
-      const updatedProduct = await Product.findByIdAndUpdate(
-        id,
-        { $set: updateData },
-        { new: 1, runValidators: 1 },
-      );
+updateProduct: async (req, res) => {
+    // 1. Wrap logic in upload middleware to parse FormData
+    upload(req, res, async (err) => {
+      try {
+        if (err instanceof multer.MulterError) {
+          return error(res, `Multer Error: ${err.message}`, 400);
+        } else if (err) {
+          return error(res, err.message, 400);
+        }
 
-      return success(res, updatedProduct, appString.USER_UPDATED, 200);
-    } catch (err) {
-      return error(res, err.message, 400);
-    }
+        const { id } = req.params;
+        
+        // NOW req.body is available
+        const { name, description, image, qty, price, categoryId, status } = req.body;
+
+        const product = await Product.findById(id);
+        if (!product) {
+          return error(res, appString.NOT_FOUND, 404);
+        }
+
+        // Prepare update data
+        let updateData = { 
+            name, 
+            description, 
+            qty: qty !== undefined ? Number(qty) : product.qty, 
+            price: price !== undefined ? Number(price) : product.price, 
+            status: status !== undefined ? Number(status) : product.status 
+        };
+
+        // 2. Handle Image Update
+        if (req.files && req.files.length > 0) {
+          // If a new file is uploaded
+          updateData.image = req.files[0].filename;
+        } else if (image) {
+          // If the existing image path is sent back as a string
+          updateData.image = image;
+        }
+
+        // 3. Category Validation (Keep your existing logic)
+        if (categoryId) {
+          const subCategory = await Category.findById(categoryId);
+          if (!subCategory) {
+            return error(res, appString.SUBCATEGORYNOTFOUND, 404);
+          }
+
+          if (subCategory.status !== 1) {
+            return error(res, appString.SUBCATEGORY_INACTIVE, 400);
+          }
+
+          const mainId = subCategory.categoryId;
+          if (!mainId) {
+            return error(res, appString.NOT_A_SUBCATEGORY, 400);
+          }
+
+          const mainCategory = await Category.findById(mainId);
+          if (!mainCategory || mainCategory.status !== 1) {
+            return error(res, appString.CATEGORY_INACTIVE, 400);
+          }
+
+          updateData.categoryId = categoryId;
+          updateData.maincategoryId = mainId;
+        }
+
+        const updatedProduct = await Product.findByIdAndUpdate(
+          id,
+          { $set: updateData },
+          { new: true, runValidators: true },
+        );
+
+        return success(res, updatedProduct, appString.USER_UPDATED, 200);
+      } catch (err) {
+        return error(res, err.message, 400);
+      }
+    });
   },
 
   deleteProduct: async (req, res) => {
@@ -137,18 +177,15 @@ const productyController = {
     }
   },
 
-  listProducts: async (req, res) => {
+listProducts: async (req, res) => {
     try {
       const { search } = req.query;
-
-      let productMatch = { status: 1 };
-
-      if (search) {
-        productMatch.name, category.categoryName = { $regex: search, $options: "i" };
-      }
+      const searchRegex = search ? new RegExp(search, "i") : null;
 
       const data = await Product.aggregate([
-        { $match: productMatch },
+        // CHANGE: Remove { status: 1 } to allow deactivated products to show
+        { $match: { isDeleted: { $ne: 1 } } }, 
+
         {
           $lookup: {
             from: "categories",
@@ -167,12 +204,17 @@ const productyController = {
           },
         },
         { $unwind: "$subCategoryDetails" },
+        
+        // Search Filter
         {
-          $match: {
-            "mainCategoryDetails.status": 1,
-            "subCategoryDetails.status": 1,
-          },
+          $match: search ? {
+            $or: [
+              { name: searchRegex },
+              { "subCategoryDetails.name": searchRegex }
+            ]
+          } : {}
         },
+
         {
           $project: {
             _id: 1,
@@ -181,20 +223,11 @@ const productyController = {
             image: 1,
             qty: 1,
             price: 1,
-            status: 1,
+            status: 1, // Ensure status is sent to frontend
             createdAt: 1,
-            updatedAt: 1,
             subcategory: {
               _id: "$subCategoryDetails._id",
               name: "$subCategoryDetails.name",
-              image: "$subCategoryDetails.image",
-              description: "$subCategoryDetails.description",
-            },
-            mainCategory: {
-              _id: "$mainCategoryDetails._id",
-              name: "$mainCategoryDetails.name",
-              image: "$mainCategoryDetails.image",
-              description: "$mainCategoryDetails.description",
             },
           },
         },
@@ -205,6 +238,6 @@ const productyController = {
     } catch (err) {
       return error(res, err.message, 400);
     }
-  },
+},
 };
 module.exports = productyController;

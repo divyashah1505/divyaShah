@@ -25,6 +25,19 @@ const adminSchema = new mongoose.Schema(
       required: [true, "Password is required"],
       minlength: [8, "Password must be at least 8 characters long"],
     },
+       is2FaEnabled:{
+            type:Number,
+            enum:[0,1],
+            default:0
+        },
+        twoFaSecret:{
+            type:String,
+        },
+        is2faverified:{
+            type:Number,
+            enum:[0,1],
+            default:0
+        },
 
     deletedAt: {
       type: Date,

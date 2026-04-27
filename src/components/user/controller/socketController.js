@@ -1,15 +1,9 @@
 const { Server } = require("socket.io");
 let io;
-// Use a Map where the key is userId and the value is an array of { socketId, deviceType } objects.
 const onlineUsers = new Map();
 
 const initSocket = (server) => {
-    io = new Server(server, {
-        cors: {
-            origin: "*",
-            methods: ["GET", "POST"]
-        }
-    });
+    io = new Server(server);
 
     io.on("connection", (socket) => {
         console.log("New socket connection attempt.");

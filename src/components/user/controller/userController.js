@@ -615,81 +615,84 @@ const userController = {
     }
   },
 
-  createwithdrawalrequest: async (req, res) => {
+createwithdrawalrequest: async (req, res) => {
     try {
-      const userId = req?.user?.id;
-      const { pointsToWithdraw } = req.body;
+        const userId = req?.user?.id;
+        const { pointsToWithdraw } = req.body;
 
-      if (!pointsToWithdraw || pointsToWithdraw < 500) {
-        return res.status(400).json({ error: appString.POINTSLIMIT });
-      }
+       
+        if (!pointsToWithdraw || pointsToWithdraw < 500) {
+            return res.status(400).json({ error: appString.POINTSLIMIT });
+        }
 
-      const activeMembership = await userMembership
-        .findOne({ userId, status: 1, endDate: { $gt: new Date() } })
-        .populate("membership_id");
+        const activeMembership = await userMembership
+            .findOne({ userId, status: 1, endDate: { $gt: new Date() } })
+            .populate("membership_id");
 
-      if (!activeMembership) {
-        return res.status(403).json({ error: appString.ACTIVEMEMBERSHIPREQUIRED });
-      }
+        if (!activeMembership) {
+            return res.status(403).json({ error: appString.ACTIVEMEMBERSHIPREQUIRED });
+        }
 
-      const plan = activeMembership.membership_id;
-      const user = await User.findById(userId);
+        const plan = activeMembership.membership_id;
+        const user = await User.findById(userId);
 
-      if (!user || user.totalPoints < pointsToWithdraw) {
-        return res.status(400).json({ error: appString.INSUFFICIENTREWARDPOINTS });
-      }
+        if (!user || user.totalPoints < pointsToWithdraw) {
+            return res.status(400).json({ error: appString.INSUFFICIENTREWARDPOINTS });
+        }
 
-      const startOfMonth = new Date();
-      startOfMonth.setDate(1);
-      startOfMonth.setHours(0, 0, 0, 0);
+        const startOfMonth = new Date();
+        startOfMonth.setDate(1);
+        startOfMonth.setHours(0, 0, 0, 0);
 
-      const monthlyRequests = await WithdrawRequest.find({
-        userId,
-        createdAt: { $gte: startOfMonth },
-        status: { $ne: 2 }
-      });
+        const monthlyRequests = await WithdrawRequest.find({ 
+            userId, 
+            createdAt: { $gte: startOfMonth }, 
+            status: { $ne: 2 } 
+        });
 
-      if (monthlyRequests.length >= 2) {
-        return res.status(400).json({ error: appString.MAXIUMLIMIT });
-      }
+        const convertedAmount = pointsToWithdraw / 10; 
+        const monthlyTotalAmount = monthlyRequests.reduce((sum, r) => sum + r.totalAmount, 0);
 
-      const convertedAmount = pointsToWithdraw / 10;
-      const monthlyTotalAmount = monthlyRequests.reduce((sum, r) => sum + r.totalAmount, 0);
+        if (plan.monthlyLimit && (monthlyTotalAmount + convertedAmount > plan.monthlyLimit)) {
+            return res.status(400).json({ error: `Monthly limit ₹${plan.monthlyLimit} exceeded.` });
+        }
 
-      if (plan.monthlyLimit && (monthlyTotalAmount + convertedAmount > plan.monthlyLimit)) {
-        return res.status(400).json({ error: `Monthly limit ₹${plan.monthlyLimit} exceeded.` });
-      }
+        
+        let fee = 0;
+        const freeAllowed = plan.freeWithdrawalsPerMonth || 0; 
 
-      let fee = 0;
-      const freeAllowed = plan.freeWithdrawalsPerMonth || 0;
+        if (monthlyRequests.length >= freeAllowed) {
+            const feePercent = plan.withdrawalFeePercentage || 0; 
+            fee = convertedAmount * (feePercent / 100);
+        }
 
-      if (monthlyRequests.length >= freeAllowed) {
-        const feePercent = plan.withdrawalFeePercentage || 0;
-        fee = convertedAmount * (feePercent / 100);
-      }
+        const finalAmount = convertedAmount - fee;
 
-      const finalAmount = convertedAmount - fee;
+        const withdraw = await WithdrawRequest.create({
+            userId,
+            membership_id: plan._id,
+            pointRequestForWithdraw: pointsToWithdraw,
+            totalAmount: convertedAmount,
+            processingFee: fee,
+            rewardableAmount: finalAmount,
+            priority: plan.ispriority || 0,
+            status: 0
+        });
 
-      const withdraw = await WithdrawRequest.create({
-        userId,
-        membership_id: plan._id,
-        pointRequestForWithdraw: pointsToWithdraw,
-        totalAmount: convertedAmount,
-        processingFee: fee,
-        rewardableAmount: finalAmount,
-        priority: plan.ispriority || 1,
-        status: 0
-      });
+        user.totalPoints -= pointsToWithdraw;
+        await user.save();
 
-      user.totalPoints -= pointsToWithdraw;
-      await user.save();
+        return res.json({ 
+            message: appString.WITHDRAWREQUEST, 
+            data: withdraw 
+        });
 
-      return res.json({ message: appString.WITHDRAWREQUEST, data: withdraw });
     } catch (error) {
-      console.error("Withdrawal Error:", error);
-      res.status(500).json({ error: appString.SERVERERROR });
+        console.error("Withdrawal Error:", error);
+        res.status(500).json({ error: appString.SERVERERROR });
     }
-  }
+}
+
 
 
 
