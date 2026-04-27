@@ -307,6 +307,4 @@ app.use(errorHandler);
 mongoose.connect(config.DB_URL)
     .then(() => console.log(" MongoDB Connected"))
     .catch((err) => console.error(" DB Error:", err));
-
-const PORT = 3000;
-server.listen(PORT, () => console.log(` Server running on http://localhost:${PORT}`));
+module.exports = app;
