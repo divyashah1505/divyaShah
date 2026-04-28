@@ -38,6 +38,10 @@ const uploadDir = path.join(__dirname, "../../../uploads/IMG");
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
+
+// NOTE: storeUserToken stores tokens in Redis for session tracking (logout support).
+// When Redis is unavailable (client = null), this is a no-op.
+// Authentication still works — JWT signature/expiry is the sole check.
 const storeUserToken = async (userId, accessToken, refreshToken) => {
   try {
     // Skip Redis if not configured
@@ -58,6 +62,9 @@ const storeUserToken = async (userId, accessToken, refreshToken) => {
   }
 };
 
+// NOTE: removeUserToken deletes tokens from Redis on logout.
+// When Redis is unavailable, logout cannot invalidate old tokens server-side.
+// Tokens will still expire naturally per their JWT expiry time.
 const removeUserToken = async (userId) => {
   try {
     if (!userId || !client) return;
@@ -69,6 +76,9 @@ const removeUserToken = async (userId) => {
   }
 };
 
+// NOTE: getActiveToken retrieves the stored access token from Redis.
+// Returns null when Redis is unavailable. The middleware/index.js
+// verifyToken function no longer depends on this — JWT verification is used instead.
 const getActiveToken = async (userId) => {
   try {
     if (!client) return null;
@@ -79,6 +89,7 @@ const getActiveToken = async (userId) => {
     return null;
   }
 };
+
 const generateTokens = async (user) => {
   if (!config.ACCESS_SECRET || !config.REFRESH_SECRET)
     throw new Error(appString.jWTNOT_DEFINED);
@@ -92,10 +103,12 @@ const generateTokens = async (user) => {
     expiresIn: "7d",
   });
 
+  // storeUserToken is a no-op when Redis is unavailable — tokens still work via JWT
   await storeUserToken(payload.id.toString(), accessToken, refreshToken);
 
   return { accessToken, refreshToken };
 };
+
 const handleRefreshToken = async (req, res) => {
   try {
     const authHeader = req.headers["authorization"];
@@ -147,23 +160,23 @@ const upload = multer({
     else cb(new Error(appString.img_ERR), false);
   },
 });
+
 async function updateUserMembership(paymentIntentId, errorMessage) {
     try {
-      
         console.log(`Attempting to update user membership record for PaymentIntent: ${paymentIntentId}`);
         console.log(`User membership record updated for PaymentIntent: ${paymentIntentId}`);
-
     } catch (err) {
         console.error("Failed Payment Handling Error:", err.message);
-       
     }
 }
+
 const errorHandler = (err, req, res, next) => {
   console.error("Error Logged:", err);
   res
     .status(err.statusCode || 500)
     .json({ success: false, message: err.message || "Internal Server Error" });
 };
+
 const generateDynamicCode = async (discountType, discountValue, Model) => {
     let isUnique = false;
     let finalCode = "";
@@ -172,7 +185,6 @@ const generateDynamicCode = async (discountType, discountValue, Model) => {
     const suffix = discountType === 'percentage' ? '%' : '';
 
     while (!isUnique) {
-      
         const randomStr = Math.random().toString(36).substring(7, 10).toUpperCase();
         finalCode = `${prefix}${discountValue}${suffix}_${randomStr}`;
         
@@ -213,15 +225,17 @@ const applyPromoCode = async (cartTotal, PromoCodeModel, userId, manualCode = nu
       totalDiscount += mDisc;
       appliedPromos.push({ id: manualPromo._id, code: manualPromo.code });
     }
+
     const autoPromo = await PromoCodeModel.findOne({
       status: 1,
       type: 0, // Automatic
       startDate: { $lte: now },
       endDate: { $gte: now }
     }).sort({ createdAt: -1 });
+
     if (autoPromo) {
       const isSameAsManual = appliedPromos.some(p => p.id.toString() === autoPromo._id.toString());
-       if (!isSameAsManual) {
+      if (!isSameAsManual) {
         const redeemed = await isAlreadyRedeemed(autoPromo._id);
         if (!redeemed) {
           const aDisc = autoPromo.discountType === 'percentage' 
@@ -233,6 +247,7 @@ const applyPromoCode = async (cartTotal, PromoCodeModel, userId, manualCode = nu
         }
       }
     }
+
     const finalTotal = Math.max(0, cartTotal - totalDiscount);
     return {
       finalTotal: Number(finalTotal.toFixed(2)),
@@ -245,6 +260,7 @@ const applyPromoCode = async (cartTotal, PromoCodeModel, userId, manualCode = nu
     return { finalTotal: cartTotal, discountAmount: 0, appliedPromos: [] };
   }
 };
+
 const calculateRewardPoints = (plan, cartTotal, isFirstOrder) => {
   if (!plan || !plan.rewards) return 0;
 
@@ -267,7 +283,8 @@ const calculateRewardPoints = (plan, cartTotal, isFirstOrder) => {
 
   return 0;
 };
-const calculateSubscriptionRefund = (totalAmount, startDate, feePercent = 0.05) =>{
+
+const calculateSubscriptionRefund = (totalAmount, startDate, feePercent = 0.05) => {
     const totalDays = 365; 
     const dailyRate = totalAmount / totalDays;
 
@@ -289,40 +306,34 @@ const calculateSubscriptionRefund = (totalAmount, startDate, feePercent = 0.05) 
         cancellationFee: cancellationFee.toFixed(2),
         finalRefundAmount: netRefund.toFixed(2)
     };
-}
+};
 
 const calculateMembershipBenefits = (cartTotal, activeMembership) => {
+  let membershipDiscount = 0;
+  let deliveryCharge = 50; 
 
-let membershipDiscount = 0;
-let deliveryCharge = 50; 
-
-if (!activeMembership || !activeMembership.membership_id) {
+  if (!activeMembership || !activeMembership.membership_id) {
     return { membershipDiscount, deliveryCharge };
-}
+  }
 
-const plan = activeMembership.membership_id;
+  const plan = activeMembership.membership_id;
 
-if (
+  if (
     plan.discount_percent > 0 &&
     cartTotal >= (plan.min_order_for_discount || 0)
-) {
-    membershipDiscount =
-        (cartTotal * plan.discount_percent) / 100;
-}
+  ) {
+    membershipDiscount = (cartTotal * plan.discount_percent) / 100;
+  }
 
-if (plan.free_delivery) {
-
-    if (!plan.free_delivery_min_amount ||
-        plan.free_delivery_min_amount === 0) {
-        deliveryCharge = 0;
+  if (plan.free_delivery) {
+    if (!plan.free_delivery_min_amount || plan.free_delivery_min_amount === 0) {
+      deliveryCharge = 0;
+    } else if (cartTotal >= plan.free_delivery_min_amount) {
+      deliveryCharge = 0;
     }
+  }
 
-    else if (cartTotal >= plan.free_delivery_min_amount) {
-        deliveryCharge = 0;
-    }
-}
-
-return { membershipDiscount, deliveryCharge };
+  return { membershipDiscount, deliveryCharge };
 };
 
 schedule.scheduleJob("*/10 * * * *", async () => {
@@ -362,33 +373,34 @@ schedule.scheduleJob("*/10 * * * *", async () => {
 });
 
 const pointRatio = 10;
-const convertsPointsToINR = (points) =>points/pointRatio
+const convertsPointsToINR = (points) => points / pointRatio;
+
 const updateUserTotalPoints = async (userId) => {
   try {
     const objectUserId = new mongoose.Types.ObjectId(userId);
 
-const result = await userRewards.aggregate([
-  { $match: { userId: objectUserId } },
-  {
-    $group: {
-      _id: "$userId",
-      total: { $sum: "$totalPoints" }
-    }
-  }
-]);
+    const result = await userRewards.aggregate([
+      { $match: { userId: objectUserId } },
+      {
+        $group: {
+          _id: "$userId",
+          total: { $sum: "$totalPoints" }
+        }
+      }
+    ]);
 
-const totalPoints = result.length > 0 ? result[0].total : 0;
+    const totalPoints = result.length > 0 ? result[0].total : 0;
 
-await User.findByIdAndUpdate(userId, {
-  $set: { totalPoints }
-});
+    await User.findByIdAndUpdate(userId, {
+      $set: { totalPoints }
+    });
 
-await Wallet.findOneAndUpdate(
-  { userId },
-  { $set: { totalReward_Points: totalPoints } }
-);
+    await Wallet.findOneAndUpdate(
+      { userId },
+      { $set: { totalReward_Points: totalPoints } }
+    );
 
-return totalPoints;
+    return totalPoints;
   } catch (error) {
     console.error("Reward Point Update Error:", error);
     throw error;
