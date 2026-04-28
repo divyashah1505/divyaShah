@@ -1,3 +1,4 @@
+// src/components/utils/commonUtils.js
 const jwt = require("jsonwebtoken");
 const config = require("../../../config/development");
 const multer = require("multer");
@@ -10,6 +11,7 @@ const mongoose = require("mongoose");
 
 let client = null;
 
+// Initialize Redis Client only if REDIS_URL is provided
 if (process.env.REDIS_URL) {
     client = createClient({
         url: process.env.REDIS_URL,
@@ -23,28 +25,28 @@ if (process.env.REDIS_URL) {
         .then(() => console.log("Redis Connected"))
         .catch((err) => console.error("Redis Connection Failed:", err.message));
 } else {
+    // Gracefully handle missing Redis on deployment
     console.log("Redis Disabled (REDIS_URL not provided)");
 }
 
-const User = require("../user/model/users")
-// const UsedPromoCode = require("../../../src/components/Admin/model/PromoCode");
+const User = require("../user/model/users");
 const UsedPromoCode = require("../Admin/model/usedPromocode");
-// const schedule = require('node-schedule');
 const schedule = require('node-schedule');
-const userRewards = require("../user/model/userRewards")
+const userRewards = require("../user/model/userRewards");
 const WithdrawRequest = require("../user/model/userWithDrawaRequest");
 const Wallet = require("../user/model/userWallet");
+
 const uploadDir = path.join(__dirname, "../../../uploads/IMG");
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
 
-// NOTE: storeUserToken stores tokens in Redis for session tracking (logout support).
-// When Redis is unavailable (client = null), this is a no-op.
-// Authentication still works — JWT signature/expiry is the sole check.
+/**
+ * Stores tokens in Redis. 
+ * Skips automatically if Redis client is not initialized.
+ */
 const storeUserToken = async (userId, accessToken, refreshToken) => {
   try {
-    // Skip Redis if not configured
     if (!client) {
       console.log("Redis unavailable. Skipping token storage.");
       return;
@@ -62,9 +64,9 @@ const storeUserToken = async (userId, accessToken, refreshToken) => {
   }
 };
 
-// NOTE: removeUserToken deletes tokens from Redis on logout.
-// When Redis is unavailable, logout cannot invalidate old tokens server-side.
-// Tokens will still expire naturally per their JWT expiry time.
+/**
+ * Removes tokens from Redis.
+ */
 const removeUserToken = async (userId) => {
   try {
     if (!userId || !client) return;
@@ -76,13 +78,12 @@ const removeUserToken = async (userId) => {
   }
 };
 
-// NOTE: getActiveToken retrieves the stored access token from Redis.
-// Returns null when Redis is unavailable. The middleware/index.js
-// verifyToken function no longer depends on this — JWT verification is used instead.
+/**
+ * Retrieves active token from Redis.
+ */
 const getActiveToken = async (userId) => {
   try {
     if (!client) return null;
-
     return await client.get(`auth:accessToken:${userId}`);
   } catch (error) {
     console.error("Redis getActiveToken Error:", error.message);
@@ -90,6 +91,9 @@ const getActiveToken = async (userId) => {
   }
 };
 
+/**
+ * Generates Access and Refresh Tokens.
+ */
 const generateTokens = async (user) => {
   if (!config.ACCESS_SECRET || !config.REFRESH_SECRET)
     throw new Error(appString.jWTNOT_DEFINED);
@@ -103,19 +107,22 @@ const generateTokens = async (user) => {
     expiresIn: "7d",
   });
 
-  // storeUserToken is a no-op when Redis is unavailable — tokens still work via JWT
+  // Attempt to store in Redis (will be ignored if Redis is down)
   await storeUserToken(payload.id.toString(), accessToken, refreshToken);
 
   return { accessToken, refreshToken };
 };
 
+/**
+ * Handles Refresh Token logic.
+ */
 const handleRefreshToken = async (req, res) => {
   try {
     const authHeader = req.headers["authorization"];
     const refreshToken = authHeader?.split(" ")[1];
 
     if (!refreshToken) {
-      return console.error(401).json({ success: false, message: "Token missing" });
+      return res.status(401).json({ success: false, message: "Token missing" });
     }
 
     const decoded = jwt.verify(
@@ -123,17 +130,15 @@ const handleRefreshToken = async (req, res) => {
       process.env.REFRESH_SECRET || config.REFRESH_SECRET,
     );
 
-    const actualId =
-      typeof decoded.id === "object" ? decoded.id.id : decoded.id;
-    const actualRole =
-      typeof decoded.id === "object" ? decoded.id.role : decoded.role;
+    const actualId = typeof decoded.id === "object" ? decoded.id.id : decoded.id;
+    const actualRole = typeof decoded.id === "object" ? decoded.id.role : decoded.role;
 
     const newTokens = await generateTokens({
       id: actualId,
       role: actualRole,
     });
 
-    return console.success(200).json({ success: true, ...newTokens });
+    return res.status(200).json({ success: true, ...newTokens });
   } catch (err) {
     console.error("Refresh Token Error:", err.message);
     return res
@@ -144,6 +149,7 @@ const handleRefreshToken = async (req, res) => {
 
 const success = (res, data = {}, message, statusCode = 200) =>
   res.status(statusCode).json({ success: true, message, data });
+
 const error = (res, message, statusCode = 422) =>
   res.status(statusCode).json({ success: false, message });
 
@@ -163,8 +169,7 @@ const upload = multer({
 
 async function updateUserMembership(paymentIntentId, errorMessage) {
     try {
-        console.log(`Attempting to update user membership record for PaymentIntent: ${paymentIntentId}`);
-        console.log(`User membership record updated for PaymentIntent: ${paymentIntentId}`);
+        console.log(`Updating membership for PaymentIntent: ${paymentIntentId}`);
     } catch (err) {
         console.error("Failed Payment Handling Error:", err.message);
     }
@@ -197,7 +202,6 @@ const generateDynamicCode = async (discountType, discountValue, Model) => {
 const applyPromoCode = async (cartTotal, PromoCodeModel, userId, manualCode = null) => {
   try {
     const now = new Date();
-    
     let totalDiscount = 0;
     let appliedPromos = []; 
 
@@ -234,8 +238,7 @@ const applyPromoCode = async (cartTotal, PromoCodeModel, userId, manualCode = nu
     }).sort({ createdAt: -1 });
 
     if (autoPromo) {
-      const isSameAsManual = appliedPromos.some(p => p.id.toString() === autoPromo._id.toString());
-      if (!isSameAsManual) {
+      if (!appliedPromos.some(p => p.id.toString() === autoPromo._id.toString())) {
         const redeemed = await isAlreadyRedeemed(autoPromo._id);
         if (!redeemed) {
           const aDisc = autoPromo.discountType === 'percentage' 
@@ -256,7 +259,6 @@ const applyPromoCode = async (cartTotal, PromoCodeModel, userId, manualCode = nu
     };
   } catch (err) {
     if (manualCode) throw err; 
-    console.error("Promo Utility Error:", err);
     return { finalTotal: cartTotal, discountAmount: 0, appliedPromos: [] };
   }
 };
@@ -287,12 +289,10 @@ const calculateRewardPoints = (plan, cartTotal, isFirstOrder) => {
 const calculateSubscriptionRefund = (totalAmount, startDate, feePercent = 0.05) => {
     const totalDays = 365; 
     const dailyRate = totalAmount / totalDays;
-
     const now = new Date();
     const start = new Date(startDate);
     const diffInMs = Math.max(0, now - start);
     const daysUsed = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
-    
     const daysRemaining = Math.max(0, totalDays - daysUsed);
 
     const grossRefund = daysRemaining * dailyRate;
@@ -318,17 +318,12 @@ const calculateMembershipBenefits = (cartTotal, activeMembership) => {
 
   const plan = activeMembership.membership_id;
 
-  if (
-    plan.discount_percent > 0 &&
-    cartTotal >= (plan.min_order_for_discount || 0)
-  ) {
+  if (plan.discount_percent > 0 && cartTotal >= (plan.min_order_for_discount || 0)) {
     membershipDiscount = (cartTotal * plan.discount_percent) / 100;
   }
 
   if (plan.free_delivery) {
-    if (!plan.free_delivery_min_amount || plan.free_delivery_min_amount === 0) {
-      deliveryCharge = 0;
-    } else if (cartTotal >= plan.free_delivery_min_amount) {
+    if (!plan.free_delivery_min_amount || plan.free_delivery_min_amount === 0 || cartTotal >= plan.free_delivery_min_amount) {
       deliveryCharge = 0;
     }
   }
@@ -336,10 +331,9 @@ const calculateMembershipBenefits = (cartTotal, activeMembership) => {
   return { membershipDiscount, deliveryCharge };
 };
 
+// Background Job for Withdrawals
 schedule.scheduleJob("*/10 * * * *", async () => {
     try {
-        console.log("Withdraw Cron Running...");
-        
         const pendingRequests = await WithdrawRequest.find({ status: 0 })
             .sort({ priority: -1, createdAt: 1 })
             .limit(50); 
@@ -363,12 +357,10 @@ schedule.scheduleJob("*/10 * * * *", async () => {
                     },
                     { upsert: true }
                 );
-                
-                console.log(`Approved & Wallet Updated : ${approvedRequest._id}`);
             }
         }
     } catch (error) {
-        console.error("Cron Error:", error);
+        console.error("Withdraw Cron Error:", error);
     }
 });
 
@@ -377,28 +369,14 @@ const convertsPointsToINR = (points) => points / pointRatio;
 
 const updateUserTotalPoints = async (userId) => {
   try {
-    const objectUserId = new mongoose.Types.ObjectId(userId);
-
     const result = await userRewards.aggregate([
-      { $match: { userId: objectUserId } },
-      {
-        $group: {
-          _id: "$userId",
-          total: { $sum: "$totalPoints" }
-        }
-      }
+      { $match: { userId: new mongoose.Types.ObjectId(userId) } },
+      { $group: { _id: "$userId", total: { $sum: "$totalPoints" } } }
     ]);
 
     const totalPoints = result.length > 0 ? result[0].total : 0;
-
-    await User.findByIdAndUpdate(userId, {
-      $set: { totalPoints }
-    });
-
-    await Wallet.findOneAndUpdate(
-      { userId },
-      { $set: { totalReward_Points: totalPoints } }
-    );
+    await User.findByIdAndUpdate(userId, { $set: { totalPoints } });
+    await Wallet.findOneAndUpdate({ userId }, { $set: { totalReward_Points: totalPoints } });
 
     return totalPoints;
   } catch (error) {

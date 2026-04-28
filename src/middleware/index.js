@@ -1,4 +1,4 @@
-// src\middleware\index.js
+// src/middleware/index.js
 const jwt = require("jsonwebtoken");
 const config = require("../../config/development");
 const { appString } = require("../components/utils/appString");
@@ -57,15 +57,13 @@ const verifyToken = async (req, res, next) => {
     const token = auth.split(" ")[1];
     const decoded = jwt.verify(token, config.ACCESS_SECRET);
 
-    // --- REDIS TOKEN CHECK (commented out — Redis unavailable on deployment) ---
-    // When Redis is available, this validates the token is still active (not logged out).
-    // Without Redis, we rely solely on JWT signature + expiry verification above.
-    // To re-enable: uncomment the block below and ensure REDIS_URL is set on Render.
-    //
-    // const savedToken = await getActiveToken(decoded.id);
-    // if (!savedToken || savedToken !== token) {
-    //   return res.status(401).json({ message: appString.SESSIONEXPIRED });
-    // }
+    // --- REDIS TOKEN CHECK (Commented out to ignore Redis) ---
+    /*
+    const savedToken = await getActiveToken(decoded.id);
+    if (!savedToken || savedToken !== token) {
+      return res.status(401).json({ message: appString.SESSIONEXPIRED });
+    }
+    */
     // --- END REDIS TOKEN CHECK ---
 
     req.user = { id: decoded.id, role: decoded.role };
@@ -129,8 +127,8 @@ const routeArray = (array_, prefix, isAdmin = false) => {
 
     const validStack = [...middlewares, controller].filter((h) => typeof h === "function");
 
-    prefix[method.toLowerCase()](<path, ...validStack>);
-  });
+    // FIXED: Removed angle brackets that caused SyntaxError
+prefix[method.toLowerCase()](path, ...validStack);  });
   return prefix;
 };
 
