@@ -28,6 +28,12 @@ const { UserBindingContextImpl } = require("twilio/lib/rest/ipMessaging/v2/servi
 const app = express();
 const server = http.createServer(app);
 
+app.get("/", (req, res) => {
+    res.status(200).json({
+        success: true,
+        message: "E-commerce Backend API is running successfully 🚀"
+    });
+});
 console.log("DB_URL =", process.env.DB_URL);
 initSocket(server)
 app.post("/razorpay/webhook", express.raw({ type: 'application/json' }), async (req, res) => {
