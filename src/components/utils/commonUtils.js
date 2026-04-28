@@ -39,20 +39,45 @@ if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
 const storeUserToken = async (userId, accessToken, refreshToken) => {
-  await client.set(`auth:accessToken:${userId}`, accessToken, {
-    expiresIn: "1d",
-  });
-  await client.set(`auth:refreshToken:${userId}`, refreshToken, {
-    expiresIn: "1d",
-  });
+  try {
+    // Skip Redis if not configured
+    if (!client) {
+      console.log("Redis unavailable. Skipping token storage.");
+      return;
+    }
+
+    await client.set(`auth:accessToken:${userId}`, accessToken, {
+      EX: 60 * 60, // 1 hour
+    });
+
+    await client.set(`auth:refreshToken:${userId}`, refreshToken, {
+      EX: 7 * 24 * 60 * 60, // 7 days
+    });
+  } catch (error) {
+    console.error("Redis storeUserToken Error:", error.message);
+  }
 };
+
 const removeUserToken = async (userId) => {
-  if (!userId) return;
-  await client.del(`auth:accessToken:${userId}`);
-  await client.del(`auth:refreshToken:${userId}`);
+  try {
+    if (!userId || !client) return;
+
+    await client.del(`auth:accessToken:${userId}`);
+    await client.del(`auth:refreshToken:${userId}`);
+  } catch (error) {
+    console.error("Redis removeUserToken Error:", error.message);
+  }
 };
+
 const getActiveToken = async (userId) => {
-  return await client.get(`auth:accessToken:${userId}`);
+  try {
+    if (!client) return null;
+
+    return await client.get(`auth:accessToken:${userId}`);
+  } catch (error) {
+    console.error("Redis getActiveToken Error:", error.message);
+    return null;
+  }
 };
 const generateTokens = async (user) => {
   if (!config.ACCESS_SECRET || !config.REFRESH_SECRET)
