@@ -20,7 +20,7 @@ const categoryController = {
         let imageName = null;
         if (req.files && req.files.length > 0) {
           imageName = req.files[0].filename; 
-        } else if (image) {
+        } else if (image && typeof image === 'string') {
           imageName = image; 
         }
 
@@ -59,7 +59,7 @@ const categoryController = {
 
         if (req.files && req.files.length > 0) {
           updateData.image = req.files[0].filename;
-        } else if (image) {
+        } else if (image && typeof image === 'string') {
           updateData.image = image;
         }
 
