@@ -4,8 +4,9 @@ const mongoose = require("mongoose");
 const path = require("path");
 const crypto = require("crypto");
 const cors = require("cors");
-const config = require("../config/development");
-const stripe = require('stripe')(config.STRIPE_SECRET_KEY);
+// const config = require("../config/development");
+// const stripe = require('stripe')(config.STRIPE_SECRET_KEY);
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const http = require("http");
 const socketController = require("../src/components/user/controller/socketController")
 const Payment = require("../src/components/user/model/payment");
@@ -306,8 +307,7 @@ app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 app.use("/api/users", router);
 app.use("/api/admin", adminRouter);
 app.use(errorHandler);
-
-mongoose.connect(config.DB_URL)
+mongoose.connect(process.env.DB_URL)
     .then(() => console.log(" MongoDB Connected"))
     .catch((err) => console.error(" DB Error:", err));
 module.exports = app;
