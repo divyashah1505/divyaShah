@@ -26,13 +26,7 @@ const routes = [
     validation: loginValidation,
     isPublic: true,
   },
-  {
-    path: "/health",
-    method: "get",
-    controller: adminController.healthCheck,
-    isPublic: true,
-    
-  },
+ 
   {
     path: "/verify-2fa",
     method: "post",

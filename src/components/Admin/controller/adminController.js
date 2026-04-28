@@ -316,16 +316,7 @@ const adminController = {
     }
   },
 
-healthCheck: async (req, res) => {
-  try {
-    return success(res,{
-      message: "Hello World",
-      status: "OK",
-    });
-  } catch (err) {
-    return console.error({ error: err.message });
-  }
-},
+
 
 
  uploadPhotos: async (req, res) => {
