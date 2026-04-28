@@ -308,6 +308,12 @@ app.use("/api/users", router);
 app.use("/api/admin", adminRouter);
 app.use(errorHandler);
 mongoose.connect(process.env.DB_URL)
-    .then(() => console.log(" MongoDB Connected"))
-    .catch((err) => console.error(" DB Error:", err));
+    .then(() => console.log("MongoDB Connected"))
+    .catch((err) => console.error("DB Error:", err));
+
+const PORT = process.env.PORT || 3000;
+
+server.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server running on port ${PORT}`);
+});
 module.exports = app;
