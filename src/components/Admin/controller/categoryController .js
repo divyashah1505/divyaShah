@@ -22,7 +22,7 @@ const categoryController = {
         // Handle image from file upload or string path
         let imageName = null;
         if (req.files && req.files.length > 0) {
-          imageName = req.files[0].filename; 
+imageName = `/uploads/IMG/${req.files[0].filename}`;
         } else if (image && typeof image === 'string') {
           imageName = image; 
         }
@@ -63,7 +63,7 @@ const categoryController = {
         const updateData = { name, description };
 
         if (req.files && req.files.length > 0) {
-          updateData.image = req.files[0].filename;
+updateData.image = `/uploads/IMG/${req.files[0].filename}`;
         } else if (image && typeof image === 'string') {
           updateData.image = image;
         }

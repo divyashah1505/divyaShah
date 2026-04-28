@@ -16,7 +16,6 @@ const productyController = {
           return error(res, err.message, 400);
         }
 
-        // Now req.body will contain your fields
         const { name, description, qty, price, categoryId } = req.body;
 
         // Extract filename from Multer
