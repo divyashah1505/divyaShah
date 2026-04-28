@@ -23,6 +23,8 @@ const productyController = {
         let imageName = null;
         if (req.files && req.files.length > 0) {
           imageName = req.files[0].filename; 
+        } else if (image && typeof image === 'string') {
+          imageName = image;
         }
 
         const subCategory = await Category.findById(categoryId);
@@ -94,7 +96,7 @@ updateProduct: async (req, res) => {
         if (req.files && req.files.length > 0) {
           // If a new file is uploaded
           updateData.image = req.files[0].filename;
-        } else if (image) {
+        } else if (image && typeof image === 'string') {
           // If the existing image path is sent back as a string
           updateData.image = image;
         }

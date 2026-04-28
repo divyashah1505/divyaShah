@@ -16,6 +16,9 @@ const categoryController = {
 
         const { name, description, categoryId, image } = req.body;
         
+        console.log("Add Category - Body:", req.body);
+        console.log("Add Category - Files:", req.files);
+
         // Handle image from file upload or string path
         let imageName = null;
         if (req.files && req.files.length > 0) {
@@ -23,6 +26,8 @@ const categoryController = {
         } else if (image && typeof image === 'string') {
           imageName = image; 
         }
+
+        console.log("Add Category - Final imageName:", imageName);
 
         if (categoryId) {
           const parentExists = await Category.findById(categoryId);
