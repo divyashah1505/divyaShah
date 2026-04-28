@@ -1,5 +1,5 @@
 const nodemailer = require("nodemailer");
-const config = require("../../../config/development.json");
+const config = require("../../../config/development");
 const { appString } = require("./appString");
 const sendEmail = async (to, subject, html) => {
   try {

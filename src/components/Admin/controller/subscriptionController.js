@@ -1,4 +1,4 @@
-const config = require('../../../../config/development.json')
+const config = require('../../../../config/development.js')
 const stripe = require('stripe')(config.STRIPE_SECRET_KEY);
 const SubscriptionPlan = require('../model/SubscriptionPlan'); 
 const { appString } = require("../../utils/appString");

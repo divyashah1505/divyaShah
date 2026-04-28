@@ -1,3 +1,4 @@
+require("dotenv").config();
 const express = require("express");
 const mongoose = require("mongoose");
 const path = require("path");
@@ -25,6 +26,8 @@ const payment = require("../src/components/user/model/payment");
 const { UserBindingContextImpl } = require("twilio/lib/rest/ipMessaging/v2/service/user/userBinding");
 const app = express();
 const server = http.createServer(app);
+
+console.log("DB_URL =", process.env.DB_URL);
 initSocket(server)
 app.post("/razorpay/webhook", express.raw({ type: 'application/json' }), async (req, res) => {
     try {

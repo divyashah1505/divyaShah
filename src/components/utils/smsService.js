@@ -1,4 +1,4 @@
-const config = require("../../../config/development.json");
+const config = require("../../../config/development.js");
 const twilio = require("twilio")(config.TWILIO_SID, config.TWILIO_AUTH_TOKEN);
 
 

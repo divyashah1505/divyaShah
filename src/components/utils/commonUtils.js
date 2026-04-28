@@ -1,5 +1,5 @@
 const jwt = require("jsonwebtoken");
-const config = require("../../../config/development.json");
+const config = require("../../../config/development");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
