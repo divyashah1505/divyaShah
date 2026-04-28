@@ -6,10 +6,26 @@ const fs = require("fs");
 const { appString } = require("../../components/utils/appString");
 const { createClient } = require("redis");
 const crypto = require("crypto");
-const client = createClient();
-const mongoose = require("mongoose")
-client.on("error", (err) => console.log("Redis Client Error", err));
-client.connect().then(() => console.log("Redis Connected"));
+const mongoose = require("mongoose");
+
+let client = null;
+
+if (process.env.REDIS_URL) {
+    client = createClient({
+        url: process.env.REDIS_URL,
+    });
+
+    client.on("error", (err) => {
+        console.error("Redis Client Error:", err.message);
+    });
+
+    client.connect()
+        .then(() => console.log("Redis Connected"))
+        .catch((err) => console.error("Redis Connection Failed:", err.message));
+} else {
+    console.log("Redis Disabled (REDIS_URL not provided)");
+}
+
 const User = require("../user/model/users")
 // const UsedPromoCode = require("../../../src/components/Admin/model/PromoCode");
 const UsedPromoCode = require("../Admin/model/usedPromocode");
@@ -371,5 +387,6 @@ module.exports = {
   updateUserMembership,
   calculateSubscriptionRefund,
   convertsPointsToINR,
-  updateUserTotalPoints
+  updateUserTotalPoints,
+  client
 };
