@@ -320,7 +320,17 @@ const adminController = {
 
 
  uploadPhotos: async (req, res) => {
-    // We call the upload middleware manually here to handle Multer errors specifically
+    // 1. Ensure the directory exists before calling the upload middleware
+    const uploadDir = 'uploads/IMG'; // MUST match the path in your multer storage config
+    if (!fs.existsSync(uploadDir)) {
+        try {
+            fs.mkdirSync(uploadDir, { recursive: true });
+        } catch (dirError) {
+            console.error("Directory Creation Error:", dirError);
+            return res.status(500).json({ message: "Failed to create upload directory" });
+        }
+    }
+    // 2. We call the upload middleware manually here to handle Multer errors specifically
     upload(req, res, (err) => {
       try {
         if (err instanceof multer.MulterError) {
@@ -328,15 +338,12 @@ const adminController = {
         } else if (err) {
           return res.status(400).json({ message: err.message });
         }
-
         // Check if files exist
         if (!req.files || req.files.length === 0) {
           return res.status(400).json({ message: appString.UPLOAD_ATLEAST_IMAGE });
         }
-
         // Map the filenames to an array
         const fileNames = req.files.map((file) => file.filename);
-
         return res.status(200).json({
           success: true,
           message: appString.PHOTOS_UPLOADED_SUCCESSFULLY,
@@ -347,7 +354,7 @@ const adminController = {
         return res.status(500).json({ message: appString.SEREVER_ERROR });
       }
     });
-  },
+},
 
 
 };
