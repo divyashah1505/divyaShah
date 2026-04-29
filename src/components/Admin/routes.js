@@ -1,17 +1,32 @@
 const express = require("express");
 const router = express.Router();
+const multer = require("multer");
 
 const adminController = require("./controller/adminController");
 const categoryController = require("./controller/categoryController ");
 const productController = require("./controller/productController");
-const orderListController = require('../Admin/controller/orderListController');
+const orderListController = require("./controller/orderListController");
 const promoCodeController = require("./controller/promocodeController");
+const adminSettingController = require("./controller/adminSettingController");
+const membershipController = require("./controller/subscriptionController");
+
 const { registerValidation } = require("./validation");
 const { loginValidation } = require("../user/validation");
 const { routeArray } = require("../../middleware");
-const adminSettingController = require("./controller/adminSettingController");
-const membershipController = require("./controller/subscriptionController")
+
+// ================= MULTER CONFIG =================
+const storage = multer.memoryStorage();
+
+const upload = multer({
+  storage,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB
+  },
+});
+
+// ================= ROUTES =================
 const routes = [
+  // ================= ADMIN AUTH =================
   {
     path: "/registeradmin",
     method: "post",
@@ -26,13 +41,14 @@ const routes = [
     validation: loginValidation,
     isPublic: true,
   },
- 
   {
     path: "/verify-2fa",
     method: "post",
     controller: adminController.verifyAdmin2FA,
     isPublic: true,
   },
+
+  // ================= 2FA =================
   {
     path: "/2fa/setup",
     method: "post",
@@ -43,6 +59,8 @@ const routes = [
     method: "post",
     controller: adminController.enable2FA,
   },
+
+  // ================= USERS =================
   {
     path: "/user-list",
     method: "get",
@@ -64,10 +82,12 @@ const routes = [
     controller: adminController.deleteUser,
   },
 
+  // ================= CATEGORY =================
   {
     path: "/category",
     method: "post",
     controller: categoryController.addCategory,
+    middleware: upload.single("image"),
   },
   {
     path: "/list-categoriesdetails",
@@ -78,6 +98,7 @@ const routes = [
     path: "/category/:id",
     method: "put",
     controller: categoryController.updateCategory,
+    middleware: upload.single("image"),
   },
   {
     path: "/category/:id",
@@ -90,10 +111,12 @@ const routes = [
     controller: categoryController.reactivateCategory,
   },
 
+  // ================= PRODUCT =================
   {
     path: "/product",
     method: "post",
     controller: productController.addProduct,
+    middleware: upload.single("image"),
   },
   {
     path: "/product-list",
@@ -104,6 +127,7 @@ const routes = [
     path: "/product/:id",
     method: "put",
     controller: productController.updateProduct,
+    middleware: upload.single("image"),
   },
   {
     path: "/product/:id",
@@ -115,17 +139,22 @@ const routes = [
     method: "put",
     controller: productController.reactivateProduct,
   },
+
+  // ================= ORDERS =================
   {
     path: "/order-list",
     method: "get",
     controller: orderListController.getOrders,
   },
+
+  // ================= SETTINGS =================
   {
     path: "/update-payment",
     method: "put",
     controller: adminSettingController.updatePaymentMethod,
   },
 
+  // ================= PROMOCODE =================
   {
     path: "/promocode",
     method: "post",
@@ -149,48 +178,53 @@ const routes = [
   {
     path: "/enable/:id",
     method: "patch",
-    controller: promoCodeController.enablePromoCode
+    controller: promoCodeController.enablePromoCode,
   },
+
+  // ================= MEMBERSHIP =================
   {
     path: "/view-subscription-plans",
     method: "get",
-    controller: membershipController.getAllMembershipPlans
+    controller: membershipController.getAllMembershipPlans,
   },
   {
     path: "/view-subscription-plans/:id",
     method: "get",
-    controller: membershipController.getMembershipPlanById
+    controller: membershipController.getMembershipPlanById,
   },
   {
     path: "/addPlan",
     method: "post",
-    controller: membershipController.addMembershipPlan
+    controller: membershipController.addMembershipPlan,
   },
   {
     path: "/updatesub/:id",
     method: "put",
-    controller: membershipController.updateMembershipPlan
+    controller: membershipController.updateMembershipPlan,
   },
   {
     path: "/disablesub/:id",
     method: "delete",
-    controller: membershipController.disableSubscriptionPlan
+    controller: membershipController.disableSubscriptionPlan,
   },
   {
     path: "/enablesub/:id",
     method: "post",
-    controller: membershipController.reactivateSubscriptionplan
+    controller: membershipController.reactivateSubscriptionplan,
   },
   {
     path: "/membership-status",
     method: "get",
-    controller: adminController.getMembershipStatus
+    controller: adminController.getMembershipStatus,
   },
+
+  // ================= PHOTO UPLOAD =================
   {
-    method: "post",
     path: "/upload-photos",
+    method: "post",
     controller: adminController.uploadPhotos,
-  }
+    middleware: upload.single("image"),
+  },
 ];
 
 module.exports = routeArray(routes, router, true);

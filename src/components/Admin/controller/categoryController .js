@@ -178,67 +178,93 @@
 const Category = require("../model/category");
 const { success, error } = require("../../utils/commonUtils");
 const { appString } = require("../../utils/appString");
-
+const uploadToCloudinary = require("../../utils/uploadToCloudinary");
 const categoryController = {
 
   // ---------------- ADD CATEGORY ----------------
-  addCategory: async (req, res) => {
+   addCategory: async (req, res) => {
     try {
-      const { name, description, categoryId, image } = req.body;
+      const { name, description, categoryId } = req.body;
 
-      let imageName = null;
+      let imageUrl = null;
 
-      // multer fallback OR uploaded filename
-      if (req.files?.length > 0) {
-        imageName = req.files[0].filename;
-      } else if (image) {
-        imageName = image;
-      }
+if (req.file) {
+  try {
+    const uploaded = await uploadToCloudinary(req.file.buffer, "categories");
+    console.log("CLOUDINARY RESPONSE:", uploaded);
+
+    imageUrl = uploaded.url;
+  } catch (cloudErr) {
+    console.error("CLOUDINARY FAILED:", cloudErr);
+    return res.status(500).json({
+      success: false,
+      message: "Image upload failed",
+      error: cloudErr.message,
+    });
+  }
+}
 
       if (categoryId) {
         const parent = await Category.findById(categoryId);
-        if (!parent) return error(res, appString.PARENTCATEGORY, 404);
+
+        if (!parent) {
+          return error(res, appString.PARENTCATEGORY, 404);
+        }
       }
 
       const category = await Category.create({
         name,
         description,
-        image: imageName, // ALWAYS filename only
+        image: imageUrl,
         categoryId: categoryId || null,
       });
 
       return success(
         res,
         category,
-        categoryId ? appString.SUBCATEGORYSUCCESS : appString.CATEGORYSUCCESS,
+        categoryId
+          ? appString.SUBCATEGORYSUCCESS
+          : appString.CATEGORYSUCCESS,
         201
       );
     } catch (err) {
-      return error(res, err.message, 400);
-    }
-  },
+  console.error("Category Error:", err);
+  return error(
+    res,
+    err.message || "Something went wrong",
+    500
+  );
+}},
+
 
   // ---------------- UPDATE CATEGORY ----------------
-  updateCategory: async (req, res) => {
+ updateCategory: async (req, res) => {
     try {
       const { id } = req.params;
-      const { name, description, image } = req.body;
+      const { name, description } = req.body;
 
-      let updateData = { name, description };
+      const updateData = { name, description };
 
-      if (req.files?.length > 0) {
-        updateData.image = req.files[0].filename;
-      } else if (image) {
-        updateData.image = image;
+      if (req.files && req.files.length > 0) {
+        const uploaded = await uploadToCloudinary(
+          req.files[0].buffer,
+          "categories"
+        );
+
+        updateData.image = uploaded.url;
       }
 
-      const updated = await Category.findByIdAndUpdate(id, updateData, {
-        new: true,
-      });
+      const updated = await Category.findByIdAndUpdate(
+        id,
+        updateData,
+        { new: true }
+      );
 
-      if (!updated) return error(res, "Category not found", 404);
+      if (!updated) {
+        return error(res, "Category not found", 404);
+      }
 
-      return success(res, updated, "Updated successfully");
+      return success(res, updated, "Category updated successfully");
     } catch (err) {
       return error(res, err.message, 400);
     }
