@@ -11,6 +11,7 @@ const user = require("../../user/model/users")
 // const userMembership = require("../../user/model/userMembership");
 const UserMembership = require("../../user/model/userMembership");
 const { upload } = require("../../../middleware");
+const fs = require("fs");
 const multer  = require("multer");
 const adminController = {
   register: async (req, res) => {
