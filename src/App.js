@@ -17,11 +17,11 @@ const Product = require("../src/components/Admin/model/product");
 const userMembership = require("../src/components/user/model/userMembership");
 const MembershipPlan = require("./components/Admin/model/SubscriptionPlan");
 const userRewards = require("../src/components/user/model/userRewards");
-const { errorHandler, calculateRewardPoints, success, calculateSubscriptionRefund,updateUserTotalPoints } = require("./components/utils/commonUtils");
+const { errorHandler, calculateRewardPoints, success, calculateSubscriptionRefund, updateUserTotalPoints } = require("./components/utils/commonUtils");
 const router = require("../src/components/user/index");
 const adminRouter = require("./components/Admin/routes");
 const { appString } = require("./components/utils/appString");
-const {initSocket , sendNotificationToUser} = require("../src/components/user/controller/socketController")
+const { initSocket, sendNotificationToUser } = require("../src/components/user/controller/socketController")
 const users = require("../src/components/user/model/users");
 const payment = require("../src/components/user/model/payment");
 const { UserBindingContextImpl } = require("twilio/lib/rest/ipMessaging/v2/service/user/userBinding");
@@ -138,7 +138,7 @@ app.post("/stripe/webhook", express.raw({ type: 'application/json' }), async (re
         const session = event.data.object;
         const paymentIntentId = session.id;
         const custId = session.customer
-        
+
         console.log(custId);
 
         const chargeId = session.latest_charge;
@@ -203,71 +203,71 @@ app.post("/stripe/webhook", express.raw({ type: 'application/json' }), async (re
             console.error("Subscription Webhook Error:", err.message);
         }
     }
- if (event.type === 'payment_intent.succeeded') {
-    const session = event.data.object;
-    const { id: pi_id, customer: custId, amount_received } = session;
-    try {
-        const updatedOrder = await Order.findOneAndUpdate(
-            { stripePaymentIntentId: pi_id, status: 0 },
-            { $set: { status: 1 } },
-            { new: true }
-        );
-
-        if (!updatedOrder) {
-            console.warn(`Order not found or already processed for PI: ${pi_id}`);
-            return;
-        }
-
-        console.log("Order updated:", updatedOrder._id);
-        const userId = updatedOrder.userId;
-        const cartTotal = amount_received / 100;
-
-        const activeMembership = await userMembership
-            .findOne({ userId, status: 1 })
-            .populate('membership_id');
-
-        let pointsEarned = 0;
-        let planIdForRewards = null;
-
-        if (activeMembership && activeMembership.membership_id) {
-            const plan = activeMembership.membership_id;
-            planIdForRewards = plan._id;
-            const previousOrders = await Order.countDocuments({ userId, status: 1, _id: { $ne: updatedOrder._id } });
-            pointsEarned = calculateRewardPoints(
-                plan,
-                cartTotal,
-                previousOrders === 0
+    if (event.type === 'payment_intent.succeeded') {
+        const session = event.data.object;
+        const { id: pi_id, customer: custId, amount_received } = session;
+        try {
+            const updatedOrder = await Order.findOneAndUpdate(
+                { stripePaymentIntentId: pi_id, status: 0 },
+                { $set: { status: 1 } },
+                { new: true }
             );
-        }
 
-        await userRewards.findOneAndUpdate(
-            { orderId: updatedOrder._id },
-            { $set: { userId, paymentIntentId: pi_id, membership_id: planIdForRewards, totalPoints: pointsEarned } },
-            { upsert: true }
-        );
+            if (!updatedOrder) {
+                console.warn(`Order not found or already processed for PI: ${pi_id}`);
+                return;
+            }
 
-        await updateUserTotalPoints(userId);
+            console.log("Order updated:", updatedOrder._id);
+            const userId = updatedOrder.userId;
+            const cartTotal = amount_received / 100;
 
-        await Payment.findOneAndUpdate(
-            { stripePaymentIntentId: pi_id },
-            { $set: { status: 1, rewardPointsEarned: pointsEarned, stripeCustomerId: custId } },
-            { upsert: true }
-        );
+            const activeMembership = await userMembership
+                .findOne({ userId, status: 1 })
+                .populate('membership_id');
 
-        if (updatedOrder.items?.length > 0) {
-            const invPromises = updatedOrder.items.map(item =>
-                Product.findByIdAndUpdate(item.productId, { $inc: { qty: -item.quantity } })
+            let pointsEarned = 0;
+            let planIdForRewards = null;
+
+            if (activeMembership && activeMembership.membership_id) {
+                const plan = activeMembership.membership_id;
+                planIdForRewards = plan._id;
+                const previousOrders = await Order.countDocuments({ userId, status: 1, _id: { $ne: updatedOrder._id } });
+                pointsEarned = calculateRewardPoints(
+                    plan,
+                    cartTotal,
+                    previousOrders === 0
+                );
+            }
+
+            await userRewards.findOneAndUpdate(
+                { orderId: updatedOrder._id },
+                { $set: { userId, paymentIntentId: pi_id, membership_id: planIdForRewards, totalPoints: pointsEarned } },
+                { upsert: true }
             );
-            await Promise.all(invPromises);
+
+            await updateUserTotalPoints(userId);
+
+            await Payment.findOneAndUpdate(
+                { stripePaymentIntentId: pi_id },
+                { $set: { status: 1, rewardPointsEarned: pointsEarned, stripeCustomerId: custId } },
+                { upsert: true }
+            );
+
+            if (updatedOrder.items?.length > 0) {
+                const invPromises = updatedOrder.items.map(item =>
+                    Product.findByIdAndUpdate(item.productId, { $inc: { qty: -item.quantity } })
+                );
+                await Promise.all(invPromises);
+            }
+
+            sendNotificationToUser(userId, 'paymentSuccess', appString.PAYMENTSUCCESSORDERCONFIRMED);
+
+            console.log(`Success: ${pointsEarned} points for Order ${updatedOrder._id}`);
+        } catch (err) {
+            console.error("Webhook Error:", err.message);
         }
-
-         sendNotificationToUser(userId, 'paymentSuccess', appString.PAYMENTSUCCESSORDERCONFIRMED );
-
-        console.log(`Success: ${pointsEarned} points for Order ${updatedOrder._id}`);
-    } catch (err) {
-        console.error("Webhook Error:", err.message);
     }
-}
     if (event.type === 'charge.refunded') {
         const charge = event.data.object;
 
@@ -309,7 +309,7 @@ app.post("/stripe/webhook", express.raw({ type: 'application/json' }), async (re
 app.use(express.json());
 app.use(cors());
 app.use(express.urlencoded({ extended: true }));
-app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
+app.use("/uploads", express.static(path.join(__dirname, "../uploads/IMG")));
 app.use("/api/users", router);
 app.use("/api/admin", adminRouter);
 app.use(errorHandler);
