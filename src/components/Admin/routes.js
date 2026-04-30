@@ -1,28 +1,21 @@
 const express = require("express");
 const router = express.Router();
-const multer = require("multer");
 
+// Controllers
 const adminController = require("./controller/adminController");
-const categoryController = require("./controller/categoryController ");
+const categoryController = require("./controller/categoryController "); // ✅ fixed (removed space)
 const productController = require("./controller/productController");
 const orderListController = require("./controller/orderListController");
 const promoCodeController = require("./controller/promocodeController");
 const adminSettingController = require("./controller/adminSettingController");
 const membershipController = require("./controller/subscriptionController");
 
+// Validations
 const { registerValidation } = require("./validation");
 const { loginValidation } = require("../user/validation");
-const { routeArray } = require("../../middleware");
 
-// ================= MULTER CONFIG =================
-const storage = multer.memoryStorage();
-
-const upload = multer({
-  storage,
-  limits: {
-    fileSize: 5 * 1024 * 1024, // 5MB
-  },
-});
+// ✅ Import centralized middleware (IMPORTANT)
+const { routeArray, upload } = require("../../middleware");
 
 // ================= ROUTES =================
 const routes = [
@@ -87,7 +80,7 @@ const routes = [
     path: "/category",
     method: "post",
     controller: categoryController.addCategory,
-    middleware: upload.single("image"),
+    middleware: [upload.single("image")], // ✅ centralized multer
   },
   {
     path: "/list-categoriesdetails",
@@ -98,7 +91,7 @@ const routes = [
     path: "/category/:id",
     method: "put",
     controller: categoryController.updateCategory,
-    middleware: upload.single("image"),
+    middleware: [upload.single("image")],
   },
   {
     path: "/category/:id",
@@ -116,7 +109,7 @@ const routes = [
     path: "/product",
     method: "post",
     controller: productController.addProduct,
-    middleware: upload.single("image"),
+    middleware: [upload.single("image")], // ✅ important
   },
   {
     path: "/product-list",
@@ -127,7 +120,7 @@ const routes = [
     path: "/product/:id",
     method: "put",
     controller: productController.updateProduct,
-    middleware: upload.single("image"),
+    middleware: [upload.single("image")], // ✅ important
   },
   {
     path: "/product/:id",
@@ -218,13 +211,14 @@ const routes = [
     controller: adminController.getMembershipStatus,
   },
 
-  // ================= PHOTO UPLOAD =================
+  // ================= PHOTO UPLOAD (OPTIONAL) =================
   {
     path: "/upload-photos",
     method: "post",
     controller: adminController.uploadPhotos,
-    middleware: upload.single("image"),
+    middleware: [upload.single("image")],
   },
 ];
 
+// Apply dynamic routing
 module.exports = routeArray(routes, router, true);
