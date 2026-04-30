@@ -45,7 +45,7 @@ const multerInstance = multer({
  * Upload middleware
  * Usage: upload(req, res, callback)
  */
-const upload = multerInstance.single("image");
+const upload = multerInstance;
 // ==============================
 // JWT Verification
 // ==============================

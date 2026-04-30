@@ -10,194 +10,157 @@ const productController = {
   // =========================
   // ADD PRODUCT
   // =========================
-  addProduct: async (req, res) => {
-    upload(req, res, async (err) => {
-      try {
-        if (err instanceof multer.MulterError) {
-          return error(res, `Multer Error: ${err.message}`, 400);
-        }
+addProduct: async (req, res) => {
+  try {
+    const { name, description, qty, price, categoryId } = req.body;
 
-        if (err) {
-          return error(res, err.message, 400);
-        }
+    let imageUrl = null;
 
-        const {
-          name,
-          description,
-          qty,
-          price,
-          categoryId,
-        } = req.body;
+    if (req.file) {
+      const uploadedImage = await uploadToCloudinary(
+        req.file.buffer,
+        "products"
+      );
+      imageUrl = uploadedImage.url;
+    }
 
-        // Upload image to Cloudinary
-        let imageUrl = null;
+    const subCategory = await Category.findById(categoryId);
 
-        if (req.files?.length > 0) {
-          const uploadedImage = await uploadToCloudinary(
-            req.files[0].buffer,
-            "products"
-          );
+    if (!subCategory) {
+      return error(res, appString.SUBCATEGORYNOTFOUND, 404);
+    }
 
-          imageUrl = uploadedImage.url;
-        }
+    if (subCategory.status !== 1) {
+      return error(res, appString.SUBCATEGORY_INACTIVE, 400);
+    }
 
-        // Validate Sub Category
-        const subCategory = await Category.findById(categoryId);
+    const mainId = subCategory.categoryId;
 
-        if (!subCategory) {
-          return error(res, appString.SUBCATEGORYNOTFOUND, 404);
-        }
+    if (!mainId) {
+      return error(res, appString.NOT_A_SUBCATEGORY, 400);
+    }
 
-        if (subCategory.status !== 1) {
-          return error(res, appString.SUBCATEGORY_INACTIVE, 400);
-        }
+    const mainCategory = await Category.findById(mainId);
 
-        const mainId = subCategory.categoryId;
+    if (!mainCategory || mainCategory.status !== 1) {
+      return error(res, appString.CATEGORY_INACTIVE, 400);
+    }
 
-        if (!mainId) {
-          return error(res, appString.NOT_A_SUBCATEGORY, 400);
-        }
-
-        // Validate Main Category
-        const mainCategory = await Category.findById(mainId);
-
-        if (!mainCategory || mainCategory.status !== 1) {
-          return error(res, appString.CATEGORY_INACTIVE, 400);
-        }
-
-        const product = await Product.create({
-          name,
-          description,
-          image: imageUrl,
-          qty: Number(qty) || 0,
-          price: Number(price) || 0,
-          maincategoryId: mainId,
-          categoryId,
-        });
-
-        return success(
-          res,
-          product,
-          appString.PRODUCTCREATED,
-          201
-        );
-      } catch (err) {
-        return error(res, err.message, 400);
-      }
+    const product = await Product.create({
+      name,
+      description,
+      image: imageUrl,
+      qty: Number(qty) || 0,
+      price: Number(price) || 0,
+      maincategoryId: mainId,
+      categoryId,
     });
-  },
+
+    return success(res, product, appString.PRODUCTCREATED, 201);
+  } catch (err) {
+    return error(res, err.message, 400);
+  }
+},
 
   // =========================
   // UPDATE PRODUCT
   // =========================
-  updateProduct: async (req, res) => {
-    upload(req, res, async (err) => {
-      try {
-        if (err instanceof multer.MulterError) {
-          return error(res, `Multer Error: ${err.message}`, 400);
-        }
+ updateProduct: async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      name,
+      description,
+      qty,
+      price,
+      categoryId,
+      status,
+    } = req.body;
 
-        if (err) {
-          return error(res, err.message, 400);
-        }
+    const product = await Product.findById(id);
 
-        const { id } = req.params;
-        const {
-          name,
-          description,
-          qty,
-          price,
-          categoryId,
-          status,
-        } = req.body;
+    if (!product) {
+      return error(res, appString.PRODUCT_NOT_FOUND, 404);
+    }
 
-        const product = await Product.findById(id);
+    const updateData = {
+      name: name ?? product.name,
+      description: description ?? product.description,
+      qty: qty !== undefined ? Number(qty) : product.qty,
+      price: price !== undefined ? Number(price) : product.price,
+      status:
+        status !== undefined ? Number(status) : product.status,
+    };
 
-        if (!product) {
-          return error(res, appString.PRODUCT_NOT_FOUND, 404);
-        }
+    // ✅ FIXED: single file
+    if (req.file) {
+      const uploadedImage = await uploadToCloudinary(
+        req.file.buffer,
+        "products"
+      );
 
-        const updateData = {
-          name: name ?? product.name,
-          description: description ?? product.description,
-          qty: qty !== undefined ? Number(qty) : product.qty,
-          price: price !== undefined ? Number(price) : product.price,
-          status: status !== undefined
-            ? Number(status)
-            : product.status,
-        };
+      updateData.image = uploadedImage.url;
+    }
 
-        // Upload new image if provided
-        if (req.files?.length > 0) {
-          const uploadedImage = await uploadToCloudinary(
-            req.files[0].buffer,
-            "products"
-          );
+    // ✅ Category Validation
+    if (categoryId) {
+      const subCategory = await Category.findById(categoryId);
 
-          updateData.image = uploadedImage.url;
-        }
-
-        // Category Validation
-        if (categoryId) {
-          const subCategory = await Category.findById(categoryId);
-
-          if (!subCategory) {
-            return error(res, appString.SUBCATEGORYNOTFOUND, 404);
-          }
-
-          if (subCategory.status !== 1) {
-            return error(
-              res,
-              appString.SUBCATEGORY_INACTIVE,
-              400
-            );
-          }
-
-          const mainId = subCategory.categoryId;
-
-          if (!mainId) {
-            return error(
-              res,
-              appString.NOT_A_SUBCATEGORY,
-              400
-            );
-          }
-
-          const mainCategory = await Category.findById(mainId);
-
-          if (!mainCategory || mainCategory.status !== 1) {
-            return error(
-              res,
-              appString.CATEGORY_INACTIVE,
-              400
-            );
-          }
-
-          updateData.categoryId = categoryId;
-          updateData.maincategoryId = mainId;
-        }
-
-        const updatedProduct =
-          await Product.findByIdAndUpdate(
-            id,
-            { $set: updateData },
-            {
-              new: true,
-              runValidators: true,
-            }
-          );
-
-        return success(
-          res,
-          updatedProduct,
-          appString.USER_UPDATED,
-          200
-        );
-      } catch (err) {
-        return error(res, err.message, 400);
+      if (!subCategory) {
+        return error(res, appString.SUBCATEGORYNOTFOUND, 404);
       }
-    });
-  },
+
+      if (subCategory.status !== 1) {
+        return error(
+          res,
+          appString.SUBCATEGORY_INACTIVE,
+          400
+        );
+      }
+
+      const mainId = subCategory.categoryId;
+
+      if (!mainId) {
+        return error(
+          res,
+          appString.NOT_A_SUBCATEGORY,
+          400
+        );
+      }
+
+      const mainCategory = await Category.findById(mainId);
+
+      if (!mainCategory || mainCategory.status !== 1) {
+        return error(
+          res,
+          appString.CATEGORY_INACTIVE,
+          400
+        );
+      }
+
+      updateData.categoryId = categoryId;
+      updateData.maincategoryId = mainId;
+    }
+
+    const updatedProduct = await Product.findByIdAndUpdate(
+      id,
+      { $set: updateData },
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
+
+    return success(
+      res,
+      updatedProduct,
+      appString.USER_UPDATED,
+      200
+    );
+  } catch (err) {
+    return error(res, err.message, 400);
+  }
+},
 
   // =========================
   // DELETE PRODUCT
