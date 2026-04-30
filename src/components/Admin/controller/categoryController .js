@@ -245,14 +245,14 @@ if (req.file) {
 
       const updateData = { name, description };
 
-      if (req.files && req.files.length > 0) {
-        const uploaded = await uploadToCloudinary(
-          req.files[0].buffer,
-          "categories"
-        );
+  if (req.file) {
+  const uploaded = await uploadToCloudinary(
+    req.file.buffer,
+    "categories"
+  );
 
-        updateData.image = uploaded.url;
-      }
+  updateData.image = uploaded.url;
+}
 
       const updated = await Category.findByIdAndUpdate(
         id,
