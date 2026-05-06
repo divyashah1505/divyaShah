@@ -58,7 +58,15 @@ const sendNotificationToUser = (userId, eventName, data) => {
     }
 };
 
+const broadcastEvent = (eventName, data) => {
+    if (io) {
+        io.emit(eventName, data);
+        console.log(`Global broadcast: ${eventName}`);
+    }
+};
+
 module.exports = {
     initSocket,
-    sendNotificationToUser
+    sendNotificationToUser,
+    broadcastEvent
 };

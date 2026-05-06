@@ -1,12 +1,17 @@
 const User = require("../model/users");
+const Order = require("../model/order");
+const Cart = require("../model/cart");
 const {
   generateTokens,
   removeUserToken,
   success,
   error,
   calculateSubscriptionRefund,
-  convertPointsToINR
+  convertsPointsToINR,
+  updateUserTotalPoints,
+  calculateRewardPoints
 } = require("../../utils/commonUtils");
+const Category = require("../../Admin/model/category");
 const { appString } = require("../../utils/appString");
 const mongoose = require("mongoose");
 const AddressModel = require("../model/Address");
@@ -19,6 +24,7 @@ const path = require("path");
 const userMembership = require("../model/userMembership")
 const userRewards = require("../model/userRewards")
 const Payment = require("../../user/model/payment")
+const Product = require("../../Admin/model/product");
 const config = require("../../../../config/development.js")
 const stripe = require("stripe")(config.STRIPE_SECRET_KEY);
 const user = require("../../user/model/users")
@@ -27,7 +33,7 @@ const Wallet = require("../model/userWallet");
 const WithdrawRequest = require("../model/userWithDrawaRequest");
 const twilio = require("twilio")(config.TWILIO_SID, config.TWILIO_AUTH_TOKEN);
 const ejs = require("ejs");
-// const { default: customers } = require("razorpay/dist/types/customers");
+
 const userController = {
   register: async (req, res) => {
     try {
@@ -41,9 +47,7 @@ const userController = {
 
       const { otp, otpExpires } = generateOTP();
 
-
       const customer = await stripe.customers.create({
-
         name: username,
         email: email,
         mobile: mobile
@@ -59,7 +63,6 @@ const userController = {
         mobile: !isEmail ? contactStr : undefined,
         stripecustomer_Id: customer.id
       };
-      console.log("customerId:", customer.id);
 
       const user = await User.create(userData);
 
@@ -78,7 +81,6 @@ const userController = {
   verifyOtp: async (req, res) => {
     try {
       const { email, mobile, otp } = req.body;
-
       const identifier = email || mobile;
 
       if (!identifier || !otp) {
@@ -168,7 +170,6 @@ const userController = {
       if (!user || !(await user.matchPassword(password))) {
         return error(res, appString.INVALID_CREDENTIALS, 401);
       }
-
 
       if (user.isVerifiedByEmail === 0 && user.isVerifiedByMobile === 0) {
         return error(res, appString.NOT_VERIFIED, 403);
@@ -301,6 +302,7 @@ const userController = {
           $project: {
             username: 1,
             email: 1,
+            totalPoints: 1,
             primaryAddress: 1,
           },
         },
@@ -469,6 +471,25 @@ const userController = {
     }
   },
 
+  verifyResetOtp: async (req, res) => {
+    try {
+      const { email, otp } = req.body;
+      const user = await User.findOne({ email, otp });
+
+      if (!user) {
+        return error(res, appString.INVALID_OTP, 400);
+      }
+
+      if (user.otpExpires < Date.now()) {
+        return error(res, appString.EXPIREDOTP, 400);
+      }
+
+      return success(res, {}, "OTP verified successfully");
+    } catch (err) {
+      return error(res, err.message, 500);
+    }
+  },
+
   resetPassword: async (req, res) => {
     try {
       const { email, otp, newPassword, confirmPassword } = req.body;
@@ -519,8 +540,20 @@ const userController = {
       const plan = await MembershipPlan.findById(memberShipId);
       if (!plan || plan.is_active === 0) return res.status(404).json({ message: "Plan not found" });
 
-      const activeSub = await userMembership.findOne({ userId: userId, status: 1 });
-      if (activeSub) return res.status(400).json({ message: "Already have an active membership" });
+      // Check for existing active membership and return structured info for frontend to handle
+      const activeSub = await userMembership.findOne({ userId: userId, status: 1 }).populate('membership_id');
+      if (activeSub) {
+        const activePlanName = activeSub.membership_id?.name || activeSub.membershipDetails?.name || 'your current plan';
+        return res.status(400).json({
+          message: "Already have an active membership",
+          activePlanName: activePlanName,
+          code: "ACTIVE_MEMBERSHIP"
+        });
+      }
+
+      // Append {CHECKOUT_SESSION_ID} so frontend can verify payment without relying on webhook
+      const baseSuccessUrl = req.body.successUrl || 'http://localhost:3001/plans?payment=success';
+      const successUrlWithSession = `${baseSuccessUrl}&session_id={CHECKOUT_SESSION_ID}`;
 
       const session = await stripe.checkout.sessions.create({
         client_reference_id: userId.toString(),
@@ -528,8 +561,8 @@ const userController = {
         payment_method_types: ['card'],
         mode: "subscription",
         line_items: [{ price: plan.stripe_price_id, quantity: 1 }],
-        success_url: "http://127.0.0.1",
-        cancel_url: "http://127.0.0.1",
+        success_url: successUrlWithSession,
+        cancel_url: req.body.cancelUrl || 'http://localhost:3001/plans',
       });
 
       // Create a pending record
@@ -540,7 +573,6 @@ const userController = {
         membershipDetails: plan,
         status: 0,
         sessionId: session.id
-
       });
 
       return res.status(200).json({ status: "success", data: session });
@@ -550,54 +582,289 @@ const userController = {
     }
   },
 
+  createwithdrawalrequest: async (req, res) => {
+    try {
+      const userId = req?.user?.id;
+      const { pointsToWithdraw } = req.body;
+
+      if (!pointsToWithdraw || pointsToWithdraw < 500) {
+        return res.status(400).json({ error: appString.POINTSLIMIT });
+      }
+
+      const activeMembership = await userMembership
+        .findOne({ userId, status: 1, endDate: { $gt: new Date() } })
+        .populate("membership_id");
+
+      if (!activeMembership) {
+        return res.status(403).json({ error: appString.ACTIVEMEMBERSHIPREQUIRED });
+      }
+
+      const plan = activeMembership.membership_id;
+      const userDoc = await User.findById(userId);
+
+      if (!userDoc || userDoc.totalPoints < pointsToWithdraw) {
+        return res.status(400).json({ error: appString.INSUFFICIENTREWARDPOINTS });
+      }
+
+      const startOfMonth = new Date();
+      startOfMonth.setDate(1);
+      startOfMonth.setHours(0, 0, 0, 0);
+
+      const monthlyRequests = await WithdrawRequest.find({
+        userId,
+        createdAt: { $gte: startOfMonth },
+        status: { $ne: 2 }
+      });
+
+      const convertedAmount = pointsToWithdraw / 10;
+      const monthlyTotalAmount = monthlyRequests.reduce((sum, r) => sum + r.totalAmount, 0);
+
+      if (plan.monthlyLimit && (monthlyTotalAmount + convertedAmount > plan.monthlyLimit)) {
+        return res.status(400).json({ error: `Monthly limit ₹${plan.monthlyLimit} exceeded.` });
+      }
+
+      let fee = 0;
+      const freeAllowed = plan.freeWithdrawalsPerMonth || 0;
+
+      if (monthlyRequests.length >= freeAllowed) {
+        const feePercent = plan.withdrawalFeePercentage || 0;
+        fee = convertedAmount * (feePercent / 100);
+      }
+
+      const finalAmount = convertedAmount - fee;
+
+      const withdraw = await WithdrawRequest.create({
+        userId,
+        membership_id: plan._id,
+        pointRequestForWithdraw: pointsToWithdraw,
+        totalAmount: convertedAmount,
+        processingFee: fee,
+        rewardableAmount: finalAmount,
+        priority: plan.ispriority || 0,
+        status: 0
+      });
+
+      userDoc.totalPoints -= pointsToWithdraw;
+      await userDoc.save();
+
+      // ✅ Sync wallet balance
+      await updateUserTotalPoints(userId);
+
+      return res.json({
+        message: appString.WITHDRAWREQUEST,
+        data: withdraw
+      });
+
+    } catch (error) {
+      console.error("Withdrawal Error:", error);
+      res.status(500).json({ error: appString.SERVERERROR });
+    }
+  },
+
+  // Called by frontend after Stripe redirects back — activates pending membership
+  // without relying on the Stripe webhook (needed for local dev where webhooks can't reach localhost)
+  verifySubscription: async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      const { sessionId } = req.query;
+
+      if (!sessionId) {
+        return res.status(400).json({ success: false, message: 'sessionId query param is required' });
+      }
+
+      // Retrieve the full session from Stripe, expanding subscription + invoice + payment_intent
+      const stripeSession = await stripe.checkout.sessions.retrieve(sessionId, {
+        expand: ['subscription', 'subscription.latest_invoice', 'subscription.latest_invoice.payment_intent']
+      });
+
+      if (stripeSession.payment_status !== 'paid') {
+        return res.status(400).json({ success: false, message: 'Payment not completed yet' });
+      }
+
+      // Find the pending membership for this session
+      let membership = await userMembership
+        .findOne({ userId, sessionId, status: 0 })
+        .populate('membership_id');
+
+      if (!membership) {
+        // Webhook may have already activated it — try fetching the active one
+        const already = await userMembership
+          .findOne({ userId, status: 1 })
+          .populate('membership_id');
+        if (already) {
+          return res.status(200).json({ success: true, data: already, alreadyActive: true });
+        }
+        return res.status(404).json({ success: false, message: 'No pending membership found for this session' });
+      }
+
+      const plan = membership.membership_id || await MembershipPlan.findById(membership.membership_id);
+      const sub = stripeSession.subscription;
+      const subId = typeof sub === 'object' ? sub.id : sub;
+      const latestInvoice = typeof sub === 'object' ? sub.latest_invoice : null;
+      const chargeId = latestInvoice?.charge || null;
+      const piObj = latestInvoice?.payment_intent;
+      const paymentIntentId = (typeof piObj === 'object' ? piObj?.id : piObj) || null;
+
+      const startDate = new Date();
+      const endDate = new Date();
+      endDate.setMonth(endDate.getMonth() + (plan?.duration_months || 1));
+
+      // Activate the membership
+      const activated = await userMembership.findByIdAndUpdate(
+        membership._id,
+        {
+          $set: {
+            status: 1,
+            paymentstatus: 1,
+            stripe_subscription_id: subId,
+            startDate,
+            endDate,
+            last_charge_id: chargeId,
+            paymentIntentId,
+            is_first_order_after_membership: 1
+          }
+        },
+        { new: true }
+      ).populate('membership_id');
+
+      // Create / update the Payment record
+      const orderRef = `ORD-${Date.now()}`.toUpperCase();
+      await Payment.findOneAndUpdate(
+        { orderId: membership._id },
+        {
+          $set: {
+            orderId: membership._id,
+            userId,
+            order_reference: orderRef,
+            chargeId: chargeId || '',
+            stripePaymentIntentId: paymentIntentId || `session_${sessionId}`,
+            amount: stripeSession.amount_total / 100,
+            currency: stripeSession.currency || 'usd',
+            status: 1,
+            paymentMethodType: 1,
+            stripecustomer_Id: stripeSession.customer,
+            rawDetails: { sessionId }
+          }
+        },
+        { upsert: true, new: true }
+      );
+
+      console.log(`[verifySubscription] Membership ${membership._id} activated for user ${userId}`);
+
+      // ✅ Credit Reward Points for Membership Purchase (Slab-based)
+      let pointsEarned = 0;
+      if (plan && plan.rewards) {
+        // Use false for isFirstOrder to give slab points for the membership purchase itself
+        pointsEarned = calculateRewardPoints(plan, stripeSession.amount_total / 100, false);
+      }
+
+      if (pointsEarned > 0) {
+        await User.findByIdAndUpdate(userId, { $inc: { totalPoints: pointsEarned } });
+        await updateUserTotalPoints(userId);
+
+        await userRewards.findOneAndUpdate(
+          { membership_id: activated._id },
+          {
+            $set: {
+              userId,
+              membership_id: activated._id,
+              paymentIntentId: paymentIntentId || `session_${sessionId}`,
+              totalPoints: pointsEarned
+            }
+          },
+          { upsert: true }
+        );
+        console.log(`[verifySubscription] ${pointsEarned} slab points credited for membership.`);
+      }
+
+      return res.status(200).json({ success: true, data: activated });
+
+    } catch (err) {
+      console.error('[verifySubscription] Error:', err.message);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  },
 
   cancelMembership: async (req, res) => {
     try {
       const userId = req.user?.id;
-      const subscription = await userMembership.findOne({ userId, status: 1 });
-      if (!subscription) return res.status(404).json({ success: false, message: appString.NOACTIVE });
 
-      const paymentRecord = await Payment.findOne({ userId, status: 1 }).sort({ createdAt: -1 });
-      if (!paymentRecord) throw new Error("Payment record not found");
-
-      if (paymentRecord.refunded === 1) {
-        return res.status(400).json({ success: false, message: "Already refunded" });
+      // 1. Find the active membership
+      const subscription = await userMembership.findOne({ userId, status: 1 }).populate('membership_id');
+      if (!subscription) {
+        return res.status(404).json({ success: false, message: appString.NOACTIVE || "No active membership found" });
       }
-      console.log(paymentRecord?.chargeId)
 
-      const refundDetails = calculateSubscriptionRefund(paymentRecord.amount, subscription.createdAt);
-      const refundAmountInCents = Math.round(parseFloat(refundDetails.finalRefundAmount) * 100);
+      // 2. Check if already cancelled/refunded
+      if (subscription.refunded === 1) {
+        return res.status(400).json({ success: false, message: "This subscription has already been refunded" });
+      }
 
-      let refundId = null;
-      const refund = await stripe.refunds.create({
-        charge: paymentRecord.chargeId,
-        amount: refundAmountInCents,
-      });
-      console.log(refund);
+      // 3. Determine the plan price for refund calculation
+      //    Priority: populated plan price → membershipDetails price → payment record amount
+      let planPrice = subscription.membership_id?.price
+        || subscription.membershipDetails?.price
+        || null;
 
-      refundId = refund.id;
+      if (!planPrice) {
+        // Fallback: look up the payment record
+        const paymentRecord = await Payment.findOne({ userId, status: 1 }).sort({ createdAt: -1 });
+        if (paymentRecord) planPrice = paymentRecord.amount;
+      }
 
+      if (!planPrice || isNaN(planPrice)) {
+        return res.status(400).json({ success: false, message: "Unable to determine plan price for refund calculation" });
+      }
 
-      try {
-        await stripe.subscriptions.cancel(subscription.stripe_subscription_id);
-      } catch (error) {
-        if (error.type === 'StripeInvalidRequestError' && error.message.includes('No such subscription')) {
-          console.log(`Subscription ${subscription.stripe_subscription_id} already canceled in Stripe, proceeding with local update.`);
-        } else {
-          throw error;
+      // 4. Calculate pro-rata refund based on days used
+      //    Uses startDate (when membership became active) from subscription.startDate or subscription.createdAt
+      const refundStartDate = subscription.startDate || subscription.createdAt;
+      const refundDetails = calculateSubscriptionRefund(planPrice, refundStartDate);
+
+      if (!refundDetails || isNaN(parseFloat(refundDetails.finalRefundAmount))) {
+        return res.status(400).json({ success: false, message: "Could not calculate a valid refund amount" });
+      }
+
+      const walletRefundAmount = parseFloat(refundDetails.finalRefundAmount);
+
+      // 5. Cancel the Stripe subscription to stop future billing
+      //    (We do NOT issue a Stripe card refund — money goes to the user's wallet)
+      if (subscription.stripe_subscription_id) {
+        try {
+          await stripe.subscriptions.cancel(subscription.stripe_subscription_id);
+          console.log(`[CANCEL] Stripe subscription ${subscription.stripe_subscription_id} cancelled`);
+        } catch (stripeErr) {
+          if (stripeErr.type === 'StripeInvalidRequestError' && stripeErr.message.includes('No such subscription')) {
+            console.log(`[CANCEL] Stripe subscription already cancelled: ${subscription.stripe_subscription_id}`);
+          } else {
+            // Non-fatal: log but continue so we still credit the wallet
+            console.error(`[CANCEL] Stripe cancel error (non-fatal): ${stripeErr.message}`);
+          }
         }
       }
 
+      // 6. Credit refund amount to user's Wallet
+      if (walletRefundAmount > 0) {
+        await Wallet.findOneAndUpdate(
+          { userId },
+          {
+            $inc: { totalWithdraw_amount: walletRefundAmount },
+            $setOnInsert: { totalReward_Points: 0 }
+          },
+          { upsert: true, new: true }
+        );
+        console.log(`[CANCEL] Wallet credited ₹${walletRefundAmount} for user ${userId}`);
+      }
 
+      // 7. Mark membership as cancelled in DB
       const updatedMembership = await userMembership.findByIdAndUpdate(
         subscription._id,
         {
           $set: {
-            status: 2,
+            status: 2,          // 2 = cancelled
             paymentstatus: 2,
             refunded: 1,
-            actual_refunded_amount: parseFloat(refundDetails.finalRefundAmount),
-            last_refund_id: refundId,
+            actual_refunded_amount: walletRefundAmount,
             canceledAt: new Date()
           }
         },
@@ -606,103 +873,278 @@ const userController = {
 
       return res.status(200).json({
         success: true,
-        refundAmount: refundDetails.finalRefundAmount,
-        refunded: !!refundId,
-        updatedData: updatedMembership
+        message: `Membership cancelled. ₹${walletRefundAmount.toFixed(2)} has been credited to your wallet.`,
+        walletRefundAmount: walletRefundAmount.toFixed(2),
+        refundBreakdown: {
+          planPrice: planPrice,
+          daysUsed: refundDetails.daysUsed || 0,
+          daysRemaining: refundDetails.daysRemaining,
+          grossRefund: refundDetails.grossRefund,
+          cancellationFee: refundDetails.cancellationFee,
+          finalRefundAmount: refundDetails.finalRefundAmount
+        },
+        updatedMembership
       });
-    } catch (error) {
-      res.status(500).json({ success: false, error: error.message });
+
+    } catch (err) {
+      console.error("[cancelMembership] Error:", err);
+      res.status(500).json({ success: false, error: err.message });
     }
   },
 
-createwithdrawalrequest: async (req, res) => {
+  getActiveCategories: async (req, res) => {
     try {
-        const userId = req?.user?.id;
-        const { pointsToWithdraw } = req.body;
+      const { search } = req.query;
+      const regex = search ? new RegExp(search, "i") : null;
 
-       
-        if (!pointsToWithdraw || pointsToWithdraw < 500) {
-            return res.status(400).json({ error: appString.POINTSLIMIT });
-        }
+      const categories = await Category.aggregate([
+        {
+          $match: {
+            categoryId: null,
+            status: 1,
+            isDeleted: { $ne: 1 },
+            ...(regex && { name: regex }),
+          },
+        },
+        {
+          $lookup: {
+            from: "categories",
+            localField: "_id",
+            foreignField: "categoryId",
+            as: "sub",
+          },
+        },
+        {
+          $addFields: {
+            subcategories: {
+              $filter: {
+                input: "$sub",
+                as: "s",
+                cond: {
+                  $and: [
+                    { $eq: ["$$s.status", 1] },
+                    { $ne: ["$$s.isDeleted", 1] }
+                  ]
+                }
+              },
+            },
+          },
+        },
+        {
+          $project: {
+            name: 1,
+            description: 1,
+            image: 1,
+            subcategories: {
+              _id: 1,
+              name: 1,
+              image: 1,
+            },
+          },
+        },
+      ]);
 
-        const activeMembership = await userMembership
-            .findOne({ userId, status: 1, endDate: { $gt: new Date() } })
-            .populate("membership_id");
+      return success(res, categories, "Active categories fetched");
+    } catch (err) {
+      return error(res, err.message, 500);
+    }
+  },
 
-        if (!activeMembership) {
-            return res.status(403).json({ error: appString.ACTIVEMEMBERSHIPREQUIRED });
-        }
+  getSubscriptionPlans: async (req, res) => {
+    try {
+      const plans = await MembershipPlan.find({ is_active: 1 })
+        .sort({ plan_type: 1 })
+        .lean();
 
-        const plan = activeMembership.membership_id;
-        const user = await User.findById(userId);
+      if (!plans || plans.length === 0) {
+        return error(res, "No active plans found", 404);
+      }
 
-        if (!user || user.totalPoints < pointsToWithdraw) {
-            return res.status(400).json({ error: appString.INSUFFICIENTREWARDPOINTS });
-        }
+      const formattedPlans = plans.map(plan => ({
+        _id: plan._id,
+        name: plan.name,
+        price: plan.price,
+        duration_months: plan.duration_months,
+        discount_percent: plan.discount_percent,
+        max_discount_limit: plan.max_discount_limit,
+        min_order_amount: plan.min_order_amount,
+        free_delivery: plan.free_delivery,
+        free_delivery_min_amount: plan.free_delivery_min_amount,
+        rewards: plan.rewards,
+        minPoints: plan.minPoints,
+        freeRequests: plan.freeRequests,
+        monthlyLimit: plan.monthlyLimit
+      }));
 
-        const startOfMonth = new Date();
-        startOfMonth.setDate(1);
-        startOfMonth.setHours(0, 0, 0, 0);
+      return success(res, formattedPlans, "Subscription plans fetched successfully");
+    } catch (err) {
+      return error(res, err.message, 500);
+    }
+  },
 
-        const monthlyRequests = await WithdrawRequest.find({ 
-            userId, 
-            createdAt: { $gte: startOfMonth }, 
-            status: { $ne: 2 } 
-        });
+  mySubscription: async (req, res, next) => {
+    try {
+      const userId = req.user?.id;
 
-        const convertedAmount = pointsToWithdraw / 10; 
-        const monthlyTotalAmount = monthlyRequests.reduce((sum, r) => sum + r.totalAmount, 0);
+      const activeMembership = await userMembership
+        .findOne({ userId: userId, status: 1 })
+        .populate('membership_id');
 
-        if (plan.monthlyLimit && (monthlyTotalAmount + convertedAmount > plan.monthlyLimit)) {
-            return res.status(400).json({ error: `Monthly limit ₹${plan.monthlyLimit} exceeded.` });
-        }
+      if (!activeMembership) {
+        return res.status(200).json({ success: true, data: null });
+      }
 
-        
-        let fee = 0;
-        const freeAllowed = plan.freeWithdrawalsPerMonth || 0; 
-
-        if (monthlyRequests.length >= freeAllowed) {
-            const feePercent = plan.withdrawalFeePercentage || 0; 
-            fee = convertedAmount * (feePercent / 100);
-        }
-
-        const finalAmount = convertedAmount - fee;
-
-        const withdraw = await WithdrawRequest.create({
-            userId,
-            membership_id: plan._id,
-            pointRequestForWithdraw: pointsToWithdraw,
-            totalAmount: convertedAmount,
-            processingFee: fee,
-            rewardableAmount: finalAmount,
-            priority: plan.ispriority || 0,
-            status: 0
-        });
-
-        user.totalPoints -= pointsToWithdraw;
-        await user.save();
-
-        return res.json({ 
-            message: appString.WITHDRAWREQUEST, 
-            data: withdraw 
-        });
+      return res.status(200).json({ success: true, data: activeMembership });
 
     } catch (error) {
-        console.error("Withdrawal Error:", error);
-        res.status(500).json({ error: appString.SERVERERROR });
+      console.error("Error fetching mySubscription:", error);
+      res.status(500).json({ success: false, message: "Server Error" });
     }
-}
+  },
 
+  getProductsBySubCategory: async (req, res) => {
+    try {
+      const { categoryId } = req.params;
 
+      const subCategory = await Category.findById(categoryId);
+      if (!subCategory || subCategory.status !== 1) {
+        return error(res, appString.SUBCATEGORYNOTFOUND, 404);
+      }
 
+      const products = await Product.find({ categoryId, status: 1 }).lean();
 
+      const formattedProducts = products.map((product) => {
+        const variants = Array.isArray(product.variants) ? product.variants : [];
+        const prices = variants.map(v => v.price).filter(p => typeof p === "number");
+
+        return {
+          _id: product._id,
+          name: product.name,
+          description: product.description,
+          image: product.images?.[0] || null,
+          images: product.images || [],
+          categoryId: product.categoryId,
+          minPrice: prices.length ? Math.min(...prices) : 0,
+          maxPrice: prices.length ? Math.max(...prices) : 0,
+          variants: variants,
+        };
+      });
+
+      return success(res, formattedProducts, "Products fetched successfully");
+    } catch (err) {
+      return error(res, err.message, 400);
+    }
+  },
+
+  madePayment: async (req, res) => {
+    try {
+      const { paymentIntentId, orderId } = req.body;
+
+      if (!paymentIntentId || !orderId) {
+        return res.status(400).json({ success: false, message: "Missing required parameters" });
+      }
+
+      const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+
+      if (paymentIntent.status === 'succeeded') {
+        const updatedOrder = await Order.findOneAndUpdate(
+          { _id: orderId, status: 0 },
+          { $set: { status: 1, stripePaymentIntentId: paymentIntentId } },
+          { new: true }
+        );
+
+        if (updatedOrder) {
+          await Cart.findByIdAndDelete(updatedOrder.cartId);
+
+          if (updatedOrder.items?.length > 0) {
+            const { deductStock } = require("../../utils/inventoryUtils");
+            const invPromises = updatedOrder.items.map(async (item) => {
+              await deductStock(item.productId, item.variantId, item.quantity);
+            });
+            await Promise.all(invPromises);
+          }
+
+          if (updatedOrder.walletAmountUsed > 0) {
+            await Wallet.findOneAndUpdate(
+              { userId: updatedOrder.userId },
+              { $inc: { totalWithdraw_amount: -updatedOrder.walletAmountUsed } }
+            );
+            console.log(`Wallet deducted: ₹${updatedOrder.walletAmountUsed} for User: ${updatedOrder.userId}`);
+          }
+
+          // ✅ Credit Reward Points
+          const userId = updatedOrder.userId;
+          const cartTotal = paymentIntent.amount_received / 100;
+
+          const activeMembership = await userMembership
+            .findOne({ userId, status: 1 })
+            .populate('membership_id');
+
+          let pointsEarned = 0;
+          let planIdForRewards = null;
+
+          if (activeMembership && activeMembership.membership_id) {
+            const plan = activeMembership.membership_id;
+            planIdForRewards = plan._id;
+
+            const isFirstAfterMembership = activeMembership.is_first_order_after_membership === 1;
+
+            pointsEarned = calculateRewardPoints(
+              plan,
+              cartTotal,
+              isFirstAfterMembership
+            );
+
+            if (isFirstAfterMembership) {
+              await userMembership.findByIdAndUpdate(activeMembership._id, {
+                $set: { is_first_order_after_membership: 0 }
+              });
+            }
+          }
+
+          if (pointsEarned > 0) {
+            const existingReward = await userRewards.findOne({ orderId: updatedOrder._id });
+            if (!existingReward) {
+              await userRewards.findOneAndUpdate(
+                { orderId: updatedOrder._id },
+                { $set: { userId, paymentIntentId, membership_id: planIdForRewards, totalPoints: pointsEarned } },
+                { upsert: true }
+              );
+
+              await User.findByIdAndUpdate(userId, { $inc: { totalPoints: pointsEarned } });
+              await updateUserTotalPoints(userId);
+              console.log(`[madePayment] ${pointsEarned} points credited for Order ${updatedOrder._id}`);
+            }
+          }
+        }
+
+        return res.status(200).json({ success: true, message: "Payment verified successfully" });
+      } else {
+        return res.status(400).json({ success: false, message: "Payment not successful" });
+      }
+    } catch (err) {
+      console.error("madePayment error:", err);
+      return res.status(500).json({ success: false, message: "Server error" });
+    }
+  },
+
+  getWallet: async (req, res) => {
+    try {
+      const userId = req.user.id;
+      const wallet = await Wallet.findOne({ userId });
+
+      if (!wallet) {
+        return success(res, {
+          totalReward_Points: 0,
+          totalWithdraw_amount: 0
+        });
+      }
+
+      return success(res, wallet);
+    } catch (err) {
+      return error(res, err.message, 500);
+    }
+  }
 };
-
-
-
-
-
-
-
 
 module.exports = userController;

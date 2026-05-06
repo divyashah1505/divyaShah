@@ -13,20 +13,20 @@ let client = null;
 
 // Initialize Redis Client only if REDIS_URL is provided
 if (process.env.REDIS_URL) {
-    client = createClient({
-        url: process.env.REDIS_URL,
-    });
+  client = createClient({
+    url: process.env.REDIS_URL,
+  });
 
-    client.on("error", (err) => {
-        console.error("Redis Client Error:", err.message);
-    });
+  client.on("error", (err) => {
+    console.error("Redis Client Error:", err.message);
+  });
 
-    client.connect()
-        .then(() => console.log("Redis Connected"))
-        .catch((err) => console.error("Redis Connection Failed:", err.message));
+  client.connect()
+    .then(() => console.log("Redis Connected"))
+    .catch((err) => console.error("Redis Connection Failed:", err.message));
 } else {
-    // Gracefully handle missing Redis on deployment
-    console.log("Redis Disabled (REDIS_URL not provided)");
+  // Gracefully handle missing Redis on deployment
+  console.log("Redis Disabled (REDIS_URL not provided)");
 }
 
 const User = require("../user/model/users");
@@ -168,42 +168,47 @@ const upload = multer({
 });
 
 async function updateUserMembership(paymentIntentId, errorMessage) {
-    try {
-        console.log(`Updating membership for PaymentIntent: ${paymentIntentId}`);
-    } catch (err) {
-        console.error("Failed Payment Handling Error:", err.message);
-    }
+  try {
+    console.log(`Updating membership for PaymentIntent: ${paymentIntentId}`);
+  } catch (err) {
+    console.error("Failed Payment Handling Error:", err.message);
+  }
 }
 
 const errorHandler = (err, req, res, next) => {
   console.error("Error Logged:", err);
-  res
-    .status(err.statusCode || 500)
-    .json({ success: false, message: err.message || "Internal Server Error" });
+  const statusCode = err.statusCode || 500;
+  const message = err.message || "Internal Server Error";
+  
+  res.status(statusCode).json({ 
+    success: false, 
+    message: `${err.name || 'Error'}: ${message}`,
+    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+  });
 };
 
 const generateDynamicCode = async (discountType, discountValue, Model) => {
-    let isUnique = false;
-    let finalCode = "";
-    
-    const prefix = discountType === 'percentage' ? 'SAVE' : 'FLAT';
-    const suffix = discountType === 'percentage' ? '%' : '';
+  let isUnique = false;
+  let finalCode = "";
 
-    while (!isUnique) {
-        const randomStr = Math.random().toString(36).substring(7, 10).toUpperCase();
-        finalCode = `${prefix}${discountValue}${suffix}_${randomStr}`;
-        
-        const existing = await Model.findOne({ code: finalCode });
-        if (!existing) isUnique = true;
-    }
-    return finalCode;
+  const prefix = discountType === 'percentage' ? 'SAVE' : 'FLAT';
+  const suffix = discountType === 'percentage' ? '%' : '';
+
+  while (!isUnique) {
+    const randomStr = Math.random().toString(36).substring(7, 10).toUpperCase();
+    finalCode = `${prefix}${discountValue}${suffix}_${randomStr}`;
+
+    const existing = await Model.findOne({ code: finalCode });
+    if (!existing) isUnique = true;
+  }
+  return finalCode;
 };
 
 const applyPromoCode = async (cartTotal, PromoCodeModel, userId, manualCode = null) => {
   try {
     const now = new Date();
     let totalDiscount = 0;
-    let appliedPromos = []; 
+    let appliedPromos = [];
 
     const isAlreadyRedeemed = async (promoId) => {
       const usage = await UsedPromoCode.findOne({ userId, promoCodeId: promoId }).populate('orderId');
@@ -218,12 +223,12 @@ const applyPromoCode = async (cartTotal, PromoCodeModel, userId, manualCode = nu
       });
 
       if (!manualPromo) throw new Error(appString.INVALIDMANUALPROMOCODE);
-      
+
       const redeemed = await isAlreadyRedeemed(manualPromo._id);
       if (redeemed) throw new Error(appString.ALREDYISEDPROMOCODE);
 
-      const mDisc = manualPromo.discountType === 'percentage' 
-        ? (cartTotal * manualPromo.discountValue) / 100 
+      const mDisc = manualPromo.discountType === 'percentage'
+        ? (cartTotal * manualPromo.discountValue) / 100
         : manualPromo.discountValue;
 
       totalDiscount += mDisc;
@@ -241,8 +246,8 @@ const applyPromoCode = async (cartTotal, PromoCodeModel, userId, manualCode = nu
       if (!appliedPromos.some(p => p.id.toString() === autoPromo._id.toString())) {
         const redeemed = await isAlreadyRedeemed(autoPromo._id);
         if (!redeemed) {
-          const aDisc = autoPromo.discountType === 'percentage' 
-            ? (cartTotal * autoPromo.discountValue) / 100 
+          const aDisc = autoPromo.discountType === 'percentage'
+            ? (cartTotal * autoPromo.discountValue) / 100
             : autoPromo.discountValue;
 
           totalDiscount += aDisc;
@@ -258,7 +263,7 @@ const applyPromoCode = async (cartTotal, PromoCodeModel, userId, manualCode = nu
       appliedPromos
     };
   } catch (err) {
-    if (manualCode) throw err; 
+    if (manualCode) throw err;
     return { finalTotal: cartTotal, discountAmount: 0, appliedPromos: [] };
   }
 };
@@ -275,7 +280,7 @@ const calculateRewardPoints = (plan, cartTotal, isFirstOrder) => {
 
   const slabs = (slabMap instanceof Map ? [...slabMap.entries()] : Object.entries(slabMap))
     .map(([amount, points]) => ({ amount: Number(amount), points }))
-    .sort((a, b) => b.amount - a.amount); 
+    .sort((a, b) => b.amount - a.amount);
 
   for (let slab of slabs) {
     if (cartTotal >= slab.amount) {
@@ -287,30 +292,30 @@ const calculateRewardPoints = (plan, cartTotal, isFirstOrder) => {
 };
 
 const calculateSubscriptionRefund = (totalAmount, startDate, feePercent = 0.05) => {
-    const totalDays = 365; 
-    const dailyRate = totalAmount / totalDays;
-    const now = new Date();
-    const start = new Date(startDate);
-    const diffInMs = Math.max(0, now - start);
-    const daysUsed = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
-    const daysRemaining = Math.max(0, totalDays - daysUsed);
+  const totalDays = 365;
+  const dailyRate = totalAmount / totalDays;
+  const now = new Date();
+  const start = new Date(startDate);
+  const diffInMs = Math.max(0, now - start);
+  const daysUsed = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
+  const daysRemaining = Math.max(0, totalDays - daysUsed);
 
-    const grossRefund = daysRemaining * dailyRate;
-    const cancellationFee = grossRefund * feePercent;
-    const netRefund = Math.max(0, grossRefund - cancellationFee);
+  const grossRefund = daysRemaining * dailyRate;
+  const cancellationFee = grossRefund * feePercent;
+  const netRefund = Math.max(0, grossRefund - cancellationFee);
 
-    return {
-        dailyRate: dailyRate.toFixed(2),
-        daysRemaining: daysRemaining,
-        grossRefund: grossRefund.toFixed(2),
-        cancellationFee: cancellationFee.toFixed(2),
-        finalRefundAmount: netRefund.toFixed(2)
-    };
+  return {
+    dailyRate: dailyRate.toFixed(2),
+    daysRemaining: daysRemaining,
+    grossRefund: grossRefund.toFixed(2),
+    cancellationFee: cancellationFee.toFixed(2),
+    finalRefundAmount: netRefund.toFixed(2)
+  };
 };
 
 const calculateMembershipBenefits = (cartTotal, activeMembership) => {
   let membershipDiscount = 0;
-  let deliveryCharge = 50; 
+  let deliveryCharge = 50;
 
   if (!activeMembership || !activeMembership.membership_id) {
     return { membershipDiscount, deliveryCharge };
@@ -331,37 +336,42 @@ const calculateMembershipBenefits = (cartTotal, activeMembership) => {
   return { membershipDiscount, deliveryCharge };
 };
 
-// Background Job for Withdrawals
-schedule.scheduleJob("*/10 * * * *", async () => {
-    try {
-        const pendingRequests = await WithdrawRequest.find({ status: 0 })
-            .sort({ priority: -1, createdAt: 1 })
-            .limit(50); 
+// Background Job for Withdrawals - Runs every 1 minute for faster processing
+schedule.scheduleJob("*/1 * * * *", async () => {
+  console.log("Withdrawal Cron Job: Checking for pending requests...");
+  try {
+    const pendingRequests = await WithdrawRequest.find({ status: 0 })
+      .sort({ priority: -1, createdAt: 1 })
+      .limit(50);
 
-        for (let request of pendingRequests) {
-            const approvedRequest = await WithdrawRequest.findOneAndUpdate(
-                { _id: request._id, status: 0 },
-                { status: 1 },
-                { new: true }
-            );
-
-            if (approvedRequest) {
-                await Wallet.findOneAndUpdate(
-                    { userId: approvedRequest.userId },
-                    { 
-                        $set: { membership_id: approvedRequest.membership_id },
-                        $inc: { 
-                            totalReward_Points: approvedRequest.pointRequestForWithdraw, 
-                            totalWithdraw_amount: approvedRequest.rewardableAmount 
-                        }
-                    },
-                    { upsert: true }
-                );
-            }
-        }
-    } catch (error) {
-        console.error("Withdraw Cron Error:", error);
+    if (pendingRequests.length > 0) {
+      console.log(`Withdrawal Cron Job: Found ${pendingRequests.length} pending requests.`);
     }
+    for (let request of pendingRequests) {
+      const approvedRequest = await WithdrawRequest.findOneAndUpdate(
+        { _id: request._id, status: 0 },
+        { status: 1 },
+        { new: true }
+      );
+
+      if (approvedRequest) {
+        await Wallet.findOneAndUpdate(
+          { userId: approvedRequest.userId },
+          {
+            $set: { membership_id: approvedRequest.membership_id },
+            $inc: {
+              totalReward_Points: approvedRequest.pointRequestForWithdraw,
+              totalWithdraw_amount: approvedRequest.rewardableAmount
+            }
+          },
+          { upsert: true }
+        );
+        console.log(`Withdrawal Cron Job: Successfully processed request for User: ${approvedRequest.userId}`);
+      }
+    }
+  } catch (error) {
+    console.error("Withdrawal Cron Job ERROR:", error);
+  }
 });
 
 const pointRatio = 10;
@@ -369,19 +379,17 @@ const convertsPointsToINR = (points) => points / pointRatio;
 
 const updateUserTotalPoints = async (userId) => {
   try {
-    const result = await userRewards.aggregate([
-      { $match: { userId: new mongoose.Types.ObjectId(userId) } },
-      { $group: { _id: "$userId", total: { $sum: "$totalPoints" } } }
-    ]);
-
-    const totalPoints = result.length > 0 ? result[0].total : 0;
-    await User.findByIdAndUpdate(userId, { $set: { totalPoints } });
-    await Wallet.findOneAndUpdate({ userId }, { $set: { totalReward_Points: totalPoints } });
-
-    return totalPoints;
+    const userDoc = await User.findById(userId);
+    if (userDoc) {
+      // Keep Wallet in sync with User's current balance
+      await Wallet.findOneAndUpdate(
+        { userId },
+        { $set: { totalReward_Points: userDoc.totalPoints || 0 } },
+        { upsert: true }
+      );
+    }
   } catch (error) {
-    console.error("Reward Point Update Error:", error);
-    throw error;
+    console.error("Point Sync Error:", error);
   }
 };
 

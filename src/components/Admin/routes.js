@@ -109,7 +109,7 @@ const routes = [
     path: "/product",
     method: "post",
     controller: productController.addProduct,
-    middleware: [upload.single("image")], // ✅ important
+    middleware: [upload.array("images", 10)],
   },
   {
     path: "/product-list",
@@ -120,7 +120,7 @@ const routes = [
     path: "/product/:id",
     method: "put",
     controller: productController.updateProduct,
-    middleware: [upload.single("image")], // ✅ important
+    middleware: [upload.array("images", 10)], // Updated to support multiple images
   },
   {
     path: "/product/:id",

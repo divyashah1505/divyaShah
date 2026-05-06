@@ -7,7 +7,10 @@ const orderSchema = new mongoose.Schema(
     items: [
       {
         productId: { type: mongoose.Schema.Types.ObjectId, ref: "Products", required: true },
+        variantId: { type: mongoose.Schema.Types.ObjectId },
         name: { type: String, required: true },
+        size: { type: String },
+        color: { type: String },
         quantity: { type: Number, required: true, min: 1 },
         price: { type: Number, required: true },
         totalItemPrice: { type: Number, required: true },
@@ -35,7 +38,13 @@ const orderSchema = new mongoose.Schema(
     },
     delivercharge:{
       type:Number
-    }
+    },
+    deliveryCharge: { type: Number, default: 0 },
+    membershipDiscount: { type: Number, default: 0 },
+    discountAmount: { type: Number, default: 0 },
+    payableAmount: { type: Number },
+    appliedPromoCode: { type: String },
+    walletAmountUsed: { type: Number, default: 0 }
   },
   { timestamps: true }
 );

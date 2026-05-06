@@ -51,9 +51,10 @@ async function AddressValidation(req, res, next) {
 async function addCartvalidation(req, res, next) {
   const validationRule = {
     product: "required|array",
+
     "product.*.productId": "required|string",
-    "product.*.quantity": "required|numeric|min:0",
-    "product.*.price": "required|numeric|min:0",    
+    "product.*.variantId": "required|string",
+    "product.*.quantity": "required|numeric|min:1",
   };
 
   val.validatorUtilWithCallback(validationRule, {}, req, res, next);

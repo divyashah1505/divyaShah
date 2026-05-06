@@ -12,16 +12,31 @@ const productController = {
   // =========================
 addProduct: async (req, res) => {
   try {
-    const { name, description, qty, price, categoryId } = req.body;
+    console.log("ADD PRODUCT - Body:", req.body);
+    console.log("ADD PRODUCT - Files:", req.files ? req.files.length : 0);
 
-    let imageUrl = null;
+    const { name, description, categoryId, variants } = req.body;
 
-    if (req.file) {
-      const uploadedImage = await uploadToCloudinary(
-        req.file.buffer,
-        "products"
-      );
-      imageUrl = uploadedImage.url;
+    if (!categoryId) {
+      return error(res, "Category ID is required", 400);
+    }
+
+    let imageUrls = [];
+
+    // multiple image upload
+    if (req.files && req.files.length > 0) {
+      for (let file of req.files) {
+        try {
+          const uploadedImage = await uploadToCloudinary(
+            file.buffer,
+            "products"
+          );
+          imageUrls.push(uploadedImage.url);
+        } catch (cloudErr) {
+          console.error("Cloudinary Upload Error:", cloudErr);
+          throw new Error("Image upload failed: " + cloudErr.message);
+        }
+      }
     }
 
     const subCategory = await Category.findById(categoryId);
@@ -37,7 +52,7 @@ addProduct: async (req, res) => {
     const mainId = subCategory.categoryId;
 
     if (!mainId) {
-      return error(res, appString.NOT_A_SUBCATEGORY, 400);
+      return error(res, "The selected category is not a subcategory (no parent category).", 400);
     }
 
     const mainCategory = await Category.findById(mainId);
@@ -46,19 +61,29 @@ addProduct: async (req, res) => {
       return error(res, appString.CATEGORY_INACTIVE, 400);
     }
 
+    // parse variants safely
+    let parsedVariants = [];
+    if (variants) {
+      try {
+        parsedVariants = typeof variants === "string" ? JSON.parse(variants) : variants;
+      } catch (parseErr) {
+        return error(res, "Invalid variants JSON format", 400);
+      }
+    }
+
     const product = await Product.create({
       name,
       description,
-      image: imageUrl,
-      qty: Number(qty) || 0,
-      price: Number(price) || 0,
+      images: imageUrls,
       maincategoryId: mainId,
       categoryId,
+      variants: Array.isArray(parsedVariants) ? parsedVariants : [],
     });
 
     return success(res, product, appString.PRODUCTCREATED, 201);
   } catch (err) {
-    return error(res, err.message, 400);
+    console.error("ADD PRODUCT ERROR:", err);
+    return error(res, err.message || "Internal Server Error", 500);
   }
 },
 
@@ -75,6 +100,7 @@ addProduct: async (req, res) => {
       price,
       categoryId,
       status,
+      variants,
     } = req.body;
 
     const product = await Product.findById(id);
@@ -86,20 +112,53 @@ addProduct: async (req, res) => {
     const updateData = {
       name: name ?? product.name,
       description: description ?? product.description,
-      qty: qty !== undefined ? Number(qty) : product.qty,
-      price: price !== undefined ? Number(price) : product.price,
-      status:
-        status !== undefined ? Number(status) : product.status,
+      status: status !== undefined ? Number(status) : product.status,
     };
 
-    // ✅ FIXED: single file
-    if (req.file) {
-      const uploadedImage = await uploadToCloudinary(
-        req.file.buffer,
-        "products"
-      );
+    // Handle Variants
+    if (variants) {
+      try {
+        updateData.variants = typeof variants === "string" ? JSON.parse(variants) : variants;
+      } catch (parseErr) {
+        return error(res, "Invalid variants JSON format", 400);
+      }
+    } else if (price !== undefined || qty !== undefined) {
+      // Handle Variants (Legacy support: Update first variant if price/qty provided)
+      const updatedVariants = [...(product.variants || [])];
+      if (updatedVariants.length === 0) {
+        updatedVariants.push({
+          size: "Standard",
+          color: "Default",
+          price: Number(price) || 0,
+          stock: Number(qty) || 0,
+        });
+      } else {
+        updatedVariants[0] = {
+          ...updatedVariants[0],
+          price: price !== undefined ? Number(price) : updatedVariants[0].price,
+          stock: qty !== undefined ? Number(qty) : updatedVariants[0].stock,
+        };
+      }
+      updateData.variants = updatedVariants;
+    }
 
-      updateData.image = uploadedImage.url;
+    // Handle multiple image uploads
+    if (req.files && req.files.length > 0) {
+      let imageUrls = [];
+      for (let file of req.files) {
+        try {
+          const uploadedImage = await uploadToCloudinary(
+            file.buffer,
+            "products"
+          );
+          imageUrls.push(uploadedImage.url);
+        } catch (cloudErr) {
+          console.error("Cloudinary Upload Error:", cloudErr);
+        }
+      }
+      if (imageUrls.length > 0) {
+        updateData.images = imageUrls;
+      }
     }
 
     // ✅ Category Validation
@@ -284,9 +343,8 @@ addProduct: async (req, res) => {
             _id: 1,
             name: 1,
             description: 1,
-            image: 1,
-            qty: 1,
-            price: 1,
+            images: 1,
+            variants: 1,
             status: 1,
             createdAt: 1,
             mainCategory: {

@@ -26,6 +26,7 @@ const userMembershipSchema = new mongoose.Schema(
     },
  last_refund_id: { type: String }, 
   actual_refunded_amount: { type: Number, default: 0 },
+  canceledAt: { type: Date },
   },
   { timestamps: true }
 );

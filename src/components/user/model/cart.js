@@ -7,6 +7,7 @@ const cartSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
+
     items: [
       {
         productId: {
@@ -14,19 +15,32 @@ const cartSchema = new mongoose.Schema(
           ref: "Products",
           required: true,
         },
+
+        // ✅ ADD THIS (FIXES YOUR MAIN ISSUE)
+        variantId: {
+          type: mongoose.Schema.Types.ObjectId,
+          required: true,
+        },
+
         name: { type: String, required: true },
+
+        // ✅ ADD THESE (for frontend display)
+        size: { type: String },
+        color: { type: String },
+
         quantity: { type: Number, required: true, min: 1 },
         price: { type: Number, required: true },
         totalItemPrice: { type: Number, required: true },
       },
     ],
+
     cartTotal: { type: Number, default: 0 },
   },
   { timestamps: true }
 );
 
-
-cartSchema.pre("save", async function () {
+// ✅ AUTO CALCULATE CART TOTAL
+cartSchema.pre("save", function () {
   if (this.items && this.items.length > 0) {
     this.cartTotal = this.items.reduce(
       (acc, item) => acc + item.totalItemPrice,

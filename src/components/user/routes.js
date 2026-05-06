@@ -1,5 +1,6 @@
 const UserController = require("./controller/userController");
 const { upload } = require("../utils/commonUtils");
+const Category = require("../../components/Admin/model/category");
 const {
     loginValidation,
     registerValidation,
@@ -28,10 +29,15 @@ module.exports = [
     {
         path: "/resend-otp",
         method: "post",
-        controller: UserController.resendOtp, 
+        controller: UserController.resendOtp,
         isPublic: true,
     },
-    
+    {
+        path: "/getActiveCategories",
+        method: "get",
+        controller: UserController.getActiveCategories,
+        isPublic: true,
+    },
     {
         path: "/login",
         method: "post",
@@ -40,11 +46,21 @@ module.exports = [
         isPublic: true,
     },
     {
+        path: "/mySubscription",
+        method: "get",
+        controller: UserController.mySubscription,
+    },
+    {
         path: "/profileupload",
         method: "post",
         middleware: [upload.array("file")],
         controller: UserController.profileUpload,
         isPublic: true,
+    },
+    {
+        path: "/products/:categoryId",
+        method: "get",
+        controller: UserController.getProductsBySubCategory,
     },
     {
         path: "/profile",
@@ -106,30 +122,71 @@ module.exports = [
         isPublic: true,
     },
     {
+        path: "/verify-otp-reset",
+        method: "post",
+        controller: UserController.verifyResetOtp,
+        isPublic: true,
+    },
+    {
         path: "/add-to-cart",
         method: "post",
         validation: addCartvalidation,
         controller: cartController.addToCart,
     },
     {
+        path: "/view-cart",
+        method: "get",
+        controller: cartController.getCart,
+    },
+
+    {
         path: "/initialize-order",
         method: "post",
         controller: orderController.createOrderFromCart
     },
     {
-        path:"/paymentInitate",
-        method:"post",
-        controller:userController.initiatesSubscription
+        path: "/order-history",
+        method: "get",
+        controller: orderController.getOrderHistory
     },
-  {
-    path: "/cancelsubscription",
-    method: "delete",
-    controller: userController.cancelMembership
-  },
- {
-    path:"/withDrawByUser",
-    method:"post",
-    controller:userController.createwithdrawalrequest
- }
+    {
+        path: "/madePayment",
+        method: "post",
+        controller: userController.madePayment
+    },
+    {
+        path: "/paymentInitate",
+        method: "post",
+        controller: userController.initiatesSubscription
+    },
+    {
+        path: "/verifySubscription",
+        method: "get",
+        controller: userController.verifySubscription
+    },
+    {
+        path: "/cancelsubscription",
+        method: "delete",
+        controller: userController.cancelMembership
+    },
+    {
+        path: "/withDrawByUser",
+        method: "post",
+        controller: userController.createwithdrawalrequest
+    },
+
+    {
+        path: "/getSubscriptionDetails",
+        method: "get",
+        controller: userController.getSubscriptionPlans,
+        isPublic: true,
+    },
+    {
+        path: "/get-wallet",
+        method: "get",
+        controller: userController.getWallet,
+    },
+
+
 ];
 
