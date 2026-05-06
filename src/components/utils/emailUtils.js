@@ -1,31 +1,29 @@
 const nodemailer = require("nodemailer");
 const config = require("../../../config/development");
-const { appString } = require("./appString");
+
+const transporter = nodemailer.createTransport({
+  service: "gmail", // ✅ more stable
+  auth: {
+    user: config.SMTP_USER,
+    pass: config.SMTP_PASS,
+  },
+});
+
 const sendEmail = async (to, subject, html) => {
   try {
-    const transporter = nodemailer.createTransport({
-      host: config.SMTP_HOST,
-      port: config.SMTP_PORT,
-      family: 4,
-      secure: config.SMTP_PORT === 465,
-      auth: {
-        user: config.SMTP_USER,
-        pass: config.SMTP_PASS,
-      },
-    });
-   const mailOptions = {
-      from: `"Elaunch Infotech" <${config.SMTP_USER}>`,
+    const info = await transporter.sendMail({
+      from: `"Clothiq" <${config.SMTP_USER}>`,
       to,
       subject,
       html,
-    };
- const info = await transporter.sendMail(mailOptions);
-    // console.log(appString.SENTSUCCESSFULLY, info.messageId);
+    });
+
     return info;
   } catch (error) {
-    console.error(appString.SMTPERROR, error);
+    console.error("SMTP ERROR:", error.message);
 
-    throw new Error(appString.SERVICEUNAVAILABLE);
+    // ❗ DO NOT BREAK YOUR API
+    return null;
   }
 };
 
