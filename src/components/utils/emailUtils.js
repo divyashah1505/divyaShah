@@ -1,26 +1,32 @@
-const nodemailer = require("nodemailer");
-const config = require("../../../config/development");
+// crudProject/src/components/utils/emailUtils.js
 
+const nodemailer = require("nodemailer");
+
+// ✅ Create transporter once (better performance)
 const transporter = nodemailer.createTransport({
-  service: "gmail", // ✅ more stable
+  service: "gmail",
   auth: {
-    user: config.SMTP_USER,
-    pass: config.SMTP_PASS,
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
   },
 });
 
 const sendEmail = async (to, subject, html) => {
   try {
+    console.log("📧 Sending email to:", to);
+
     const info = await transporter.sendMail({
-      from: `"Clothiq" <${config.SMTP_USER}>`,
+      from: `"Clothiq" <${process.env.SMTP_USER}>`,
       to,
       subject,
       html,
     });
 
+    console.log("✅ Email sent:", info.messageId);
     return info;
+
   } catch (error) {
-    console.error("SMTP ERROR:", error.message);
+    console.error("❌ EMAIL FAILED:", error.message);
 
     // ❗ DO NOT BREAK YOUR API
     return null;

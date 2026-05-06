@@ -1,3 +1,7 @@
+// crudProject/config/development.js
+
+require("dotenv").config(); // ✅ IMPORTANT (for local)
+
 const config = {
   DB_URL: process.env.DB_URL,
 
@@ -15,7 +19,12 @@ const config = {
 
   TWILIO_SID: process.env.TWILIO_SID,
   TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
-  TWILIO_PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER
+  TWILIO_PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER,
 };
+
+console.log(" ENV CHECK:", {
+  SMTP_USER: process.env.SMTP_USER,
+  SMTP_PASS: process.env.SMTP_PASS ? "EXISTS" : "MISSING",
+});
 
 module.exports = config;
