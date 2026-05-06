@@ -6,6 +6,7 @@ const sendEmail = async (to, subject, html) => {
     const transporter = nodemailer.createTransport({
       host: config.SMTP_HOST,
       port: config.SMTP_PORT,
+      family: 4,
       secure: config.SMTP_PORT === 465,
       auth: {
         user: config.SMTP_USER,
